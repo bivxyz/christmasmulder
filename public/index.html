@@ -28,6 +28,11 @@
    <div id="list-view">
     <div class="controls">
       <input id="q" type="search" placeholder="Search titles" aria-label="Search titles">
+      <button type="button" class="filters-toggle" id="filters-toggle" aria-expanded="false" aria-controls="filters">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M3 5h18M6 12h12M10 19h4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>
+        Filters<span class="filters-toggle__n" id="filters-n" hidden></span>
+      </button>
+      <div class="filters" id="filters">
       <select id="network" aria-label="Network"></select>
       <select id="show" aria-label="Show">
         <option value="all">All movies</option>
@@ -46,8 +51,9 @@
         <option value="imdb">IMDB</option>
         <option value="title">Title</option>
       </select>
+      </div>
     </div>
-    <div class="countbar"><p class="count" id="count"></p><p class="export">Download for Excel: <a id="csv-season" href="/api/export.csv" download>this view</a> · <a href="/api/export.csv?season=all" download>every season</a></p></div>
+    <div class="countbar"><p class="count" id="count"></p><p class="export"><a href="/api/export.csv?season=all" download title="Every season, with a Last Rated column so changes are easy to find">⬇ Export ratings for Excel</a></p></div>
     <ol class="movies" id="movies"></ol>
    </div>
    <section id="profile-view" class="profile" hidden></section>

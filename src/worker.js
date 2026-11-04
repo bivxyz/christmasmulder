@@ -197,7 +197,7 @@ async function exportCsv(url, env) {
   const people = members.results.filter((p) => rows.some((m) => m.ratings[p.id]));
 
   const header = ['Season', 'Release Date', 'Name', 'App', 'IMDB', 'Rec', 'View',
-    ...people.map((p) => p.name), 'Family Avg', 'Favorites', 'Comment', 'IMDb Link'];
+    ...people.map((p) => p.name), 'Family Avg', 'Last Rated', 'Favorites', 'Comment', 'IMDb Link'];
   const lines = [header];
   for (const m of rows) {
     const cells = people.map((p) => {
@@ -213,14 +213,16 @@ async function exportCsv(url, env) {
       m.season === 'classics' ? 'Classics' : m.season,
       m.release_date || m.release_year || '',
       m.title, m.network_code || m.network || '', m.imdb ?? '', m.rec || '', m.view || '',
-      ...cells, avg, (m.favorites || []).map((id) => names[id] || id).join(', '),
+      // newest rating date on the row, so Chris can sort by it and see what changed
+      ...cells, avg, Object.values(m.ratings).map((r) => r.rated_at || '').sort().pop()?.slice(0, 10) || '',
+      (m.favorites || []).map((id) => names[id] || id).join(', '),
       m.comment || '', m.imdb_id ? `https://www.imdb.com/title/${m.imdb_id}/` : '',
     ]);
   }
   // BOM so Excel reads emoji and accents (Catnip Cafe) as UTF-8
   const body = '﻿' + lines.map((l) => l.map(csvCell).join(',')).join('\r\n') + '\r\n';
   const stamp = new Date().toISOString().slice(0, 10);
-  const label = season === 'all' ? 'all-seasons' : season;
+  const label = season === 'all' ? 'ratings' : season;
   return new Response(body, {
     headers: {
       'content-type': 'text/csv; charset=utf-8',

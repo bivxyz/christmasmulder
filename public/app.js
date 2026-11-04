@@ -93,6 +93,7 @@ function mineHtml(m) {
       <span class="rater" data-movie="${m.id}">${starsHtml(score)}<span class="rater__hit">${hits}</span></span>
       <button type="button" class="pill pill--poop" data-sucks="${m.id}" aria-pressed="${sucks}" title="It sucked" aria-label="It sucked">💩</button>
       <button type="button" class="pill pill--fav" data-fav="${m.id}" aria-pressed="${(m.favorites || []).includes(state.me)}" title="One of my favorites" aria-label="One of my favorites">🌟</button>
+      ${r?.source === 'site' ? `<button type="button" class="pill pill--clear" data-clear="${m.id}" title="Remove my rating">✕ clear</button>` : ''}
     </div>`;
 }
 
@@ -194,7 +195,6 @@ function renderMovies() {
   if (by) list = [...list].sort(by);
 
   if (sort === 'recent') list = list.filter((m) => Object.values(m.ratings).some(hasRated));
-  $('#csv-season').href = state.view === 'season' ? `/api/export.csv?season=${encodeURIComponent(state.season)}` : '/api/export.csv?season=all';
   $('#count').textContent = (state.view === 'rated' ? `${list.length} rated movies across every season` : `${list.length} of ${state.movies.length} movies`)
     + (show === 'unrated' && !state.me ? '... sign in to see what you haven\'t rated' : '');
   $('#movies').innerHTML = list.map(movieHtml).join('');
@@ -386,6 +386,8 @@ document.addEventListener('click', async (e) => {
     history.pushState(null, '', nav.getAttribute('href'));
     return route();
   }
+  const clear = t.closest('[data-clear]');
+  if (clear) return saveRating(+clear.dataset.clear, { score: null });
   const fav = t.closest('[data-fav]');
   if (fav) return toggleFavorite(+fav.dataset.fav, fav.getAttribute('aria-pressed') !== 'true');
   const sucks = t.closest('[data-sucks]');
@@ -487,6 +489,18 @@ $('#login-form').addEventListener('submit', async (e) => {
 });
 
 $('#by').addEventListener('input', syncPersonSort);
+
+// phones: dropdowns stay tucked behind the Filters button; the badge counts what's changed from default
+$('#filters-toggle').addEventListener('click', () => {
+  const open = $('.controls').classList.toggle('controls--open');
+  $('#filters-toggle').setAttribute('aria-expanded', open);
+});
+function countFilters() {
+  const n = [$('#network').value !== '', $('#show').value !== 'all', $('#by').value !== '', $('#sort').value !== 'date'].filter(Boolean).length;
+  $('#filters-n').hidden = !n;
+  $('#filters-n').textContent = n;
+}
+for (const id of ['#network', '#show', '#by', '#sort']) $(id).addEventListener('input', countFilters);
 // Recently rated swaps the data to every season; leaving it goes back to the season tab
 $('#sort').addEventListener('change', () => {
   if ($('#sort').value === 'recent' && state.view !== 'rated') loadRated();
