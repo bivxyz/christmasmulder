@@ -256,3 +256,15 @@ dialog label[for="member-name"] { display: block; font-size: 15px; font-weight: 
 .stocking--sm { width: 58px; }
 .stocking--sm .stocking__name { position: static; display: block; height: auto; width: auto; padding: 0; margin-top: 2px; font: 600 13px/1.2 var(--body); color: var(--ink); }
 .strip__all { align-self: center; color: var(--red); font-size: 15px; }
+
+/* the sleigh: flies up and across after some ratings (see flySleigh) */
+.sleigh {
+  position: fixed; top: 22vh; left: 0; width: min(520px, 78vw); z-index: 50; pointer-events: none;
+  color: var(--ink); animation: sleigh-fly 2.6s cubic-bezier(.4, .1, .6, .9) forwards;
+}
+.sleigh svg { display: block; width: 100%; height: auto; overflow: visible; }
+@keyframes sleigh-fly {
+  0%   { transform: translate(-100%, 60px) rotate(-2deg); }
+  50%  { transform: translate(calc(50vw - 50%), 0) rotate(-6deg); }
+  100% { transform: translate(100vw, -90px) rotate(-10deg); }
+}

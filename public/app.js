@@ -419,12 +419,56 @@ async function boot() {
   await route();
 }
 
+// ---------- the sleigh ----------
+// Like Asana's unicorn: a little reward, not a every-time thing.
+// Always on a 5-star rating or a new favorite; otherwise about 1 rating in 4.
+function reindeer(x, y) {
+  return `<g transform="translate(${x} ${y})">
+    <ellipse cx="40" cy="60" rx="32" ry="12" transform="rotate(-12 40 60)"/>
+    <path d="M60 54 L76 26 L86 28 L72 60 Z"/>
+    <ellipse cx="88" cy="25" rx="12" ry="6" transform="rotate(-18 88 25)"/>
+    <path d="M78 21 L74 15 L82 18 Z"/>
+    <g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="82,20 76,4 70,-8"/><polyline points="77,7 86,-2"/><polyline points="73,-2 64,-6"/>
+      <polyline points="86,20 88,6 96,-4"/><polyline points="88,9 98,6"/>
+      <polyline points="62,64 82,78 96,72"/><polyline points="56,68 70,86 84,84"/>
+      <polyline points="16,66 -4,78 -18,72"/><polyline points="22,68 6,88 -8,88"/>
+    </g>
+    <path d="M8 54 L-4 48 L4 60 Z"/>
+  </g>`;
+}
+
+const SLEIGH_SVG = `<svg viewBox="-10 -30 580 180" aria-hidden="true" fill="currentColor">
+  <g fill="none" stroke="currentColor" stroke-width="3">
+    <path d="M100 78 C150 90 190 112 262 120"/><path d="M336 92 C350 96 370 90 382 88"/><path d="M456 62 C470 64 490 58 502 58"/>
+  </g>
+  <path d="M86 76 L94 66 L106 76 L98 86 Z"/>
+  <circle cx="84" cy="56" r="11"/>
+  <path d="M73 52 L97 48 L80 30 Z"/><circle cx="78" cy="30" r="5"/>
+  <rect x="70" y="62" width="32" height="40" rx="12"/>
+  <path d="M30 122 L26 84 Q26 68 42 70 L62 74 L72 100 L132 100 Q152 100 152 80 L166 82 Q168 120 136 122 Z"/>
+  <g fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round">
+    <path d="M14 136 H152 Q172 136 174 122"/><path d="M48 122 V136 M120 122 V136"/>
+  </g>
+  ${reindeer(196, 56)}${reindeer(320, 28)}${reindeer(444, -2)}
+</svg>`;
+
+function flySleigh() {
+  if (document.querySelector('.sleigh')) return;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const el = document.createElement('div');
+  el.className = 'sleigh';
+  el.innerHTML = SLEIGH_SVG;
+  el.addEventListener('animationend', () => el.remove());
+  document.body.append(el);
+}
+
 async function toggleFavorite(movieId, on) {
   const m = state.movies.find((x) => x.id === movieId);
   try {
     await api('/api/favorite', { method: 'POST', body: { movie_id: movieId, on } });
     m.favorites = (m.favorites || []).filter((id) => id !== state.me);
-    if (on) m.favorites.push(state.me);
+    if (on) { m.favorites.push(state.me); flySleigh(); }
     if (state.view === 'profile') return route();
     document.querySelector(`.movie[data-id="${movieId}"]`).outerHTML = movieHtml(m);
   } catch (err) {
@@ -440,6 +484,7 @@ async function saveRating(movieId, body) {
     const { rating } = await api('/api/rate', { method: 'POST', body: { movie_id: movieId, ...body } });
     if (rating) m.ratings[state.me] = rating; else delete m.ratings[state.me];
     li.outerHTML = movieHtml(m);
+    if (rating?.score === 10 || (rating?.score != null && Math.random() < 0.25)) flySleigh();
   } catch (err) {
     li?.classList.remove('saving');
     alert(err.message);
