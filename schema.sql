@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS ratings (
   verdict    TEXT,                     -- 'sucks', 'turned-off', 'skipped'
   watched    INTEGER NOT NULL DEFAULT 0,
   source     TEXT NOT NULL,            -- 'sheet' | 'site'; site always wins
-  updated_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,             -- last written (sync bumps this every run)
+  rated_at   TEXT,                      -- when the rating itself last changed; null = old sheet rating
   PRIMARY KEY (movie_id, member_id)
 );
 

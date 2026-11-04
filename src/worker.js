@@ -54,9 +54,11 @@ export async function syncFromXlsx(env, buf, via) {
     const movieId = ids.get(`${m.season}|${m.title_key}`);
     for (const [member, r] of Object.entries(m.ratings)) {
       ratingStatements.push(db.prepare(
-        `INSERT INTO ratings (movie_id, member_id, score, verdict, watched, source, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, 'sheet', ?6)
+        `INSERT INTO ratings (movie_id, member_id, score, verdict, watched, source, updated_at, rated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, 'sheet', ?6, ?6)
          ON CONFLICT (movie_id, member_id) DO UPDATE SET
+           rated_at = CASE WHEN ratings.score IS excluded.score AND ratings.verdict IS excluded.verdict
+                           THEN ratings.rated_at ELSE excluded.rated_at END,
            score = excluded.score, verdict = excluded.verdict, watched = excluded.watched, updated_at = excluded.updated_at
          WHERE ratings.source = 'sheet'`,
       ).bind(movieId, member, r.score, r.verdict, r.watched, now));
@@ -99,12 +101,12 @@ async function listMovies(url, env) {
   const [movies, ratings] = await env.DB.batch([
     env.DB.prepare(`SELECT id, title, release_date, release_year, network, network_code, imdb, rec, view, comment, imdb_id, poster_url
       FROM movies WHERE season = ? AND missing_since IS NULL ORDER BY release_date IS NULL, release_date, row_order`).bind(season),
-    env.DB.prepare(`SELECT r.movie_id, r.member_id, r.score, r.verdict, r.watched, r.source FROM ratings r
+    env.DB.prepare(`SELECT r.movie_id, r.member_id, r.score, r.verdict, r.watched, r.source, r.rated_at FROM ratings r
       JOIN movies m ON m.id = r.movie_id WHERE m.season = ? AND m.missing_since IS NULL`).bind(season),
   ]);
   const byMovie = {};
   for (const r of ratings.results) {
-    (byMovie[r.movie_id] ||= {})[r.member_id] = { score: r.score, verdict: r.verdict, watched: r.watched, source: r.source };
+    (byMovie[r.movie_id] ||= {})[r.member_id] = { score: r.score, verdict: r.verdict, watched: r.watched, source: r.source, rated_at: r.rated_at };
   }
   return json(movies.results.map((m) => ({ ...m, ratings: byMovie[m.id] || {} })));
 }
@@ -144,12 +146,13 @@ async function rate(request, env, me) {
     await env.DB.prepare('DELETE FROM ratings WHERE movie_id = ? AND member_id = ?').bind(movieId, me).run();
     return json({ ok: true, rating: null });
   }
-  const rating = { score: verdict ? null : score, verdict, watched: 1, source: 'site' };
-  await env.DB.prepare(`INSERT INTO ratings (movie_id, member_id, score, verdict, watched, source, updated_at)
-    VALUES (?1, ?2, ?3, ?4, 1, 'site', ?5)
+  const now = new Date().toISOString();
+  const rating = { score: verdict ? null : score, verdict, watched: 1, source: 'site', rated_at: now };
+  await env.DB.prepare(`INSERT INTO ratings (movie_id, member_id, score, verdict, watched, source, updated_at, rated_at)
+    VALUES (?1, ?2, ?3, ?4, 1, 'site', ?5, ?5)
     ON CONFLICT (movie_id, member_id) DO UPDATE SET score = excluded.score, verdict = excluded.verdict,
-      watched = 1, source = 'site', updated_at = excluded.updated_at`)
-    .bind(movieId, me, rating.score, rating.verdict, new Date().toISOString()).run();
+      watched = 1, source = 'site', updated_at = excluded.updated_at, rated_at = excluded.rated_at`)
+    .bind(movieId, me, rating.score, rating.verdict, now).run();
   return json({ ok: true, rating });
 }
 

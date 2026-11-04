@@ -92,6 +92,7 @@ function movieHtml(m) {
   const meta = [
     m.network ? `<span title="${esc(m.network_code)}">${esc(m.network)}</span>` : '',
     m.imdb != null ? `IMDB ${m.imdb.toFixed(1)}` : '',
+    $('#sort').value === 'recent' ? lastRatedText(m) : '',
   ].filter(Boolean).join(' · ');
   const imdbUrl = m.imdb_id ? `https://www.imdb.com/title/${m.imdb_id}/` : null;
   const poster = m.poster_url
@@ -133,14 +134,38 @@ function renderNetworks() {
   if (counts[current]) $('#network').value = current;
 }
 
+// a real verdict, not just a 2021-style "watched" check mark
+const hasRated = (r) => r && (r.score != null || r.verdict);
+const latestRating = (m, who) => (who ? [m.ratings[who]] : Object.values(m.ratings))
+  .filter(hasRated).map((r) => r.rated_at || '').sort().pop() || '';
+
+function renderBy() {
+  const current = $('#by').value;
+  $('#by').innerHTML = '<option value="">Rated by anyone</option>'
+    + state.members.map((m) => `<option value="${m.id}">Rated by ${esc(m.name)}</option>`).join('');
+  $('#by').value = current;
+  syncPersonSort();
+}
+
+// "Dana's score" sort only exists while a person is picked
+function syncPersonSort() {
+  const by = $('#by').value;
+  const opt = $('#sort').querySelector('[value="person"]');
+  opt.hidden = opt.disabled = !by;
+  opt.textContent = by ? `${memberName(by)}'s score` : 'Their score';
+  if (!by && $('#sort').value === 'person') $('#sort').value = 'date';
+}
+
 function renderMovies() {
   const q = $('#q').value.trim().toLowerCase();
   const network = $('#network').value;
   const show = $('#show').value;
+  const who = $('#by').value;
   const sort = $('#sort').value;
   let list = state.movies.filter((m) => {
     if (q && !m.title.toLowerCase().includes(q)) return false;
     if (network && m.network !== network) return false;
+    if (who && !hasRated(m.ratings[who])) return false;
     const up = m.release_date && m.release_date > today;
     if (show === 'aired' && up) return false;
     if (show === 'upcoming' && !up) return false;
@@ -151,12 +176,32 @@ function renderMovies() {
     family: (a, b) => (familyAvg(b) ?? -1) - (familyAvg(a) ?? -1),
     imdb: (a, b) => (b.imdb ?? -1) - (a.imdb ?? -1),
     title: (a, b) => a.title.localeCompare(b.title),
+    // newest first; old sheet ratings (no timestamp) fall to the bottom in air-date order
+    recent: (a, b) => latestRating(b, who).localeCompare(latestRating(a, who)),
+    // sucks counts below any star score
+    person: (a, b) => personScore(b, who) - personScore(a, who),
   }[sort];
   if (by) list = [...list].sort(by);
 
+  if (sort === 'recent') list = list.filter((m) => Object.values(m.ratings).some(hasRated));
   $('#count').textContent = `${list.length} of ${state.movies.length} movies`
     + (show === 'unrated' && !state.me ? '... sign in to see what you haven\'t rated' : '');
   $('#movies').innerHTML = list.map(movieHtml).join('');
+}
+
+function lastRatedText(m) {
+  const who = $('#by').value;
+  const entries = Object.entries(m.ratings).filter(([id, r]) => hasRated(r) && r.rated_at && (!who || id === who));
+  if (!entries.length) return '';
+  const [id, r] = entries.sort((a, b) => b[1].rated_at.localeCompare(a[1].rated_at))[0];
+  return `${esc(memberName(id))} rated ${timeAgo(r.rated_at)}`;
+}
+
+function personScore(m, who) {
+  const r = m.ratings[who];
+  if (!r) return -3;
+  if (r.score != null) return r.score;
+  return r.verdict === 'sucks' ? -1 : -2;
 }
 
 function renderFooter() {
@@ -191,6 +236,7 @@ async function boot() {
   const data = await api('/api/bootstrap');
   Object.assign(state, { me: data.me, members: data.members, seasons: data.seasons, lastSync: data.lastSync });
   renderMe();
+  renderBy();
   renderFooter();
   const saved = store.get('season');
   const season = state.seasons.some((s) => s.season === saved) ? saved : state.seasons[0]?.season;
@@ -280,6 +326,7 @@ $('#login-form').addEventListener('submit', async (e) => {
   }
 });
 
-for (const id of ['#q', '#network', '#show', '#sort']) $(id).addEventListener('input', renderMovies);
+$('#by').addEventListener('input', syncPersonSort);
+for (const id of ['#q', '#network', '#show', '#by', '#sort']) $(id).addEventListener('input', renderMovies);
 
 boot().catch((err) => { $('#count').textContent = `Couldn't load: ${err.message}`; });
