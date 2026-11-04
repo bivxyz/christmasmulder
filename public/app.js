@@ -148,7 +148,7 @@ function renderSeasons() {
     movies = `<button type="button" class="tab" id="movies-tab">🎬 ${current ? seasonLabel(current) : 'Movies'}</button>`;
   }
   $('#seasons').innerHTML = movies
-    + `<a href="/family" data-nav class="tab" aria-current="${state.view === 'family'}">🎄 Family</a>`;
+    + `<a href="/family" data-nav class="tab" aria-current="${state.view === 'family'}">🧦 Family</a>`;
 }
 
 function renderNetworks() {
@@ -322,44 +322,80 @@ async function showProfile(id) {
     <div class="strip" id="family-strip"></div>`;
   const people = await api('/api/family').catch(() => []);
   const strip = $('#family-strip');
-  if (strip) strip.innerHTML = people.map((p, i) => (p.id === member.id ? '' : ornament(p, i, true))).join('')
-    + '<a class="strip__all" href="/family" data-nav>🎄 Whole tree</a>';
+  if (strip) strip.innerHTML = people.map((p, i) => (p.id === member.id ? '' : stocking(p, i, true))).join('')
+    + '<a class="strip__all" href="/family" data-nav>🧦 Whole family</a>';
 }
 
-const ORNAMENTS = ['#c8102e', '#d4a017', '#1e6fb8', '#7b2d8e', '#e0662b', '#0f8a6a'];
+// stocking colors from the site palette: [body, stripe/toe]
+const STOCKINGS = [['#a4161a', '#e8c25a'], ['#1e5631', '#e8c25a'], ['#d4a017', '#a4161a'], ['#1e5631', '#fffaf2'], ['#a4161a', '#fffaf2'], ['#d4a017', '#1e5631']];
+const INK = '#2b1d17';
+const CUFF = '#fffaf2';
 
-function ornament(p, i, small) {
-  const ball = p.poster_url
-    ? `<img src="${esc(p.poster_url)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
-    : `<span>${esc(p.name.slice(0, 1))}</span>`;
-  const sub = small ? '' : `<span class="ornament__stat">${p.rated ? `${p.rated} rated` : 'no ratings yet'}</span>`;
+function stockingSvg(i, uid) {
+  const [body, accent] = STOCKINGS[i % STOCKINGS.length];
+  const leg = 'M16 46 V104 C16 140 38 152 62 152 H86 C100 152 106 142 106 130 C106 118 98 110 84 108 L74 106 V46 Z';
+  return `<svg viewBox="0 0 110 160" aria-hidden="true">
+    <defs><clipPath id="leg-${uid}"><path d="${leg}"/></clipPath></defs>
+    <rect x="50" y="0" width="10" height="14" rx="2" fill="${INK}"/>
+    <path d="${leg}" fill="${body}"/>
+    <g clip-path="url(#leg-${uid})" fill="none" stroke-width="6" stroke-linejoin="round">
+      <polyline points="8,66 20,58 32,66 44,58 56,66 68,58 80,66" stroke="${accent}"/>
+      <polyline points="8,84 20,76 32,84 44,76 56,84 68,76 80,84" stroke="${CUFF}"/>
+      <circle cx="22" cy="142" r="15" fill="${accent}" stroke="none"/>
+      <path d="M70 160 C76 136 86 118 96 108 L120 110 V160 Z" fill="${accent}" stroke="none"/>
+    </g>
+    <path d="${leg}" fill="none" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+    <rect x="8" y="10" width="82" height="36" rx="7" fill="${CUFF}" stroke="${INK}" stroke-width="3"/>
+  </svg>`;
+}
+
+function stocking(p, i, small) {
   const title = p.favorite ? `${p.name}... favorite: ${p.favorite}` : p.name;
-  return `<a class="ornament${small ? ' ornament--sm' : ''}" href="/u/${p.id}" data-nav title="${esc(title)}" style="--c:${ORNAMENTS[i % ORNAMENTS.length]}">
-    <span class="ornament__ball">${ball}</span><span class="ornament__name">${esc(p.name)}</span>${sub}</a>`;
+  const stat = small ? '' : `<span class="stocking__stat">${p.rated ? `${p.rated} rated` : 'no ratings yet'}</span>`;
+  return `<a class="stocking${small ? ' stocking--sm' : ''}" href="/u/${p.id}" data-nav title="${esc(title)}">
+    <span class="stocking__art">${stockingSvg(i, `${p.id}${small ? '-sm' : ''}`)}<span class="stocking__name">${esc(p.name)}</span></span>${stat}</a>`;
 }
 
-// rows of 1, 2, 3... like a tree; adding family grows it a row
-function treeRows(people) {
+// stockings per mantel: 3 on phones, more on wider screens; a big family gets more mantels
+function perMantel() {
+  const w = $('#profile-view').clientWidth || innerWidth;
+  return w < 520 ? 3 : w < 760 ? 4 : 6;
+}
+
+function renderFireplace(people) {
+  const n = perMantel();
   const rows = [];
-  for (let i = 0, n = 1; i < people.length; n++) { rows.push(people.slice(i, i + n)); i += n; }
-  return rows;
+  for (let i = 0; i < people.length; i += n) rows.push(people.slice(i, i + n));
+  let i = 0;
+  return `<div class="fireplace">${rows.map((row, r) => `
+    <div class="mantel-row">
+      <div class="mantel">${r === 0 ? '<span class="mantel__deco mantel__deco--l" aria-hidden="true">🔮</span><span class="mantel__deco mantel__deco--m" aria-hidden="true">✨</span><span class="mantel__deco mantel__deco--r" aria-hidden="true">🎁</span>' : ''}</div>
+      <div class="hearth">${row.map((p) => stocking(p, i++)).join('')}</div>
+    </div>`).join('')}</div>`;
 }
 
+let familyCache = null;
 async function showFamily() {
   $('#list-view').hidden = true;
   const view = $('#profile-view');
   view.hidden = false;
   state.view = 'family';
   renderSeasons();
-  document.title = 'Family tree · Christmas Mulder';
+  document.title = 'Family · Christmas Mulder';
   view.innerHTML = '<p class="count">Loading...</p>';
-  const people = await api('/api/family');
-  let i = 0;
-  const rows = treeRows(people).map((row) => `<div class="tree__row">${row.map((p) => ornament(p, i++)).join('')}</div>`).join('');
-  view.innerHTML = `<h2 class="profile__name">The family tree</h2>
-    <p class="profile__stats">Tap an ornament to see someone's favorites and ratings.</p>
-    <div class="tree"><span class="tree__star" aria-hidden="true">🌟</span>${rows}<span class="tree__trunk" aria-hidden="true"></span></div>`;
+  familyCache = await api('/api/family');
+  view.innerHTML = `<h2 class="profile__name">The family</h2>
+    <p class="profile__stats">Tap a stocking to see someone's favorites and ratings.</p>
+    <div id="fireplace">${renderFireplace(familyCache)}</div>`;
 }
+// re-hang the stockings if the screen width changes how many fit on a mantel
+let lastPer = 0;
+window.addEventListener('resize', () => {
+  if (state.view !== 'family' || !familyCache) return;
+  const n = perMantel();
+  if (n !== lastPer && $('#fireplace')) $('#fireplace').innerHTML = renderFireplace(familyCache);
+  lastPer = n;
+});
 
 async function route() {
   if (location.pathname === '/family') return showFamily();
@@ -482,27 +518,50 @@ function commitScore(rater, score) {
   // landing on your current score again clears it
   saveRating(movieId, current?.source === 'site' && current.score === score ? { score: null } : { score });
 }
+// Touch: the page owns vertical swipes (touch-action: pan-y), so a scroll that starts on the stars
+// cancels the rating instead of making one. A tap that only stops a fling doesn't count either.
+let lastScroll = 0;
+window.addEventListener('scroll', () => { lastScroll = Date.now(); }, { passive: true });
+function cancelDrag() {
+  if (!drag) return;
+  const { rater } = drag;
+  drag = null;
+  delete rater.dataset.preview;
+  const s = state.movies.find((m) => m.id === +rater.dataset.movie)?.ratings[state.me]?.score;
+  rater.querySelector('.stars').style.setProperty('--pct', `${s == null ? 0 : Math.min(s, 10) * 10}%`);
+}
 document.addEventListener('pointerdown', (e) => {
   const rater = e.target.closest('.rater');
   if (!rater || e.button !== 0) return;
-  e.preventDefault();
-  drag = { rater, score: scoreAt(rater, e.clientX) };
-  rater.setPointerCapture(e.pointerId);
-  previewScore(rater, drag.score);
+  const touch = e.pointerType !== 'mouse';
+  if (touch && Date.now() - lastScroll < 300) return; // finger landed to stop a scroll
+  if (!touch) e.preventDefault();
+  drag = { rater, touch, x: e.clientX, y: e.clientY, scrollY: window.scrollY, score: scoreAt(rater, e.clientX), moved: false };
+  if (!touch) { try { rater.setPointerCapture(e.pointerId); } catch { /* ignore */ } previewScore(rater, drag.score); }
 });
 document.addEventListener('pointermove', (e) => {
   if (!drag) return;
+  const dx = Math.abs(e.clientX - drag.x);
+  const dy = Math.abs(e.clientY - drag.y);
+  if (drag.touch && !drag.moved) {
+    if (dy > 8 && dy > dx) return cancelDrag(); // that's a scroll
+    if (dx < 6) return; // not decided yet
+    drag.moved = true; // sideways: it's a rating slide
+    try { drag.rater.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
+  }
   drag.score = scoreAt(drag.rater, e.clientX);
   previewScore(drag.rater, drag.score);
 });
-document.addEventListener('pointerup', () => {
+document.addEventListener('pointerup', (e) => {
   if (!drag) return;
-  const { rater, score } = drag;
+  if (drag.touch && (Math.abs(window.scrollY - drag.scrollY) > 2 || Math.abs(e.clientY - drag.y) > 12)) return cancelDrag();
+  const { rater } = drag;
+  const score = drag.touch && !drag.moved ? scoreAt(rater, e.clientX) : drag.score; // a clean tap rates where it landed
   drag = null;
   delete rater.dataset.preview;
   commitScore(rater, score);
 });
-document.addEventListener('pointercancel', () => { if (drag) { delete drag.rater.dataset.preview; drag = null; } });
+document.addEventListener('pointercancel', cancelDrag);
 
 // hover preview on the star rater
 document.addEventListener('mouseover', (e) => {
