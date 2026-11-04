@@ -131,11 +131,24 @@ function renderMe() {
     : '<button id="signin">Sign in to rate</button>';
 }
 
+// Two tabs: Movies and Family.
+// On the movie list, the Movies tab is a native year picker (phones get their own scroll wheel).
+// Anywhere else it's a plain tab that takes you back to the season you were on.
 function renderSeasons() {
-  // Family goes first so it's visible on phones, where the tabs scroll sideways
-  $('#seasons').innerHTML = `<a href="/family" data-nav class="seasons__family" aria-current="${state.view === 'family'}">🎄 Family</a>`
-    + state.seasons.map((s) =>
-      `<button type="button" data-season="${s.season}" aria-current="${state.view === 'season' && s.season === state.season}">${seasonLabel(s.season)}</button>`).join('');
+  const onMovies = state.view === 'season' || state.view === 'rated';
+  const current = state.season || state.seasons[0]?.season;
+  let movies;
+  if (onMovies) {
+    const options = state.seasons.map((s) =>
+      `<option value="${s.season}"${state.view === 'season' && s.season === state.season ? ' selected' : ''}>${seasonLabel(s.season)}</option>`).join('');
+    const all = state.view === 'rated' ? '<option value="" selected>All years</option>' : '';
+    movies = `<label class="tab tab--picker" aria-current="true">🎬
+      <select id="season-pick" aria-label="Season">${all}${options}</select></label>`;
+  } else {
+    movies = `<button type="button" class="tab" id="movies-tab">🎬 ${current ? seasonLabel(current) : 'Movies'}</button>`;
+  }
+  $('#seasons').innerHTML = movies
+    + `<a href="/family" data-nav class="tab" aria-current="${state.view === 'family'}">🎄 Family</a>`;
 }
 
 function renderNetworks() {
@@ -415,8 +428,7 @@ document.addEventListener('click', async (e) => {
     return $('#add-member').showModal();
   }
   if (t.closest('#add-member-cancel')) return $('#add-member').close();
-  const seasonBtn = t.closest('[data-season]');
-  if (seasonBtn) return loadSeason(seasonBtn.dataset.season);
+  if (t.closest('#movies-tab')) return loadSeason(state.season || state.seasons[0]?.season);
   const hit = t.closest('.rater__hit button');
   // mouse and touch go through the pointer handlers below; this path is keyboard only
   if (hit && e.detail === 0) {
@@ -535,6 +547,9 @@ $('#login-form').addEventListener('submit', async (e) => {
 });
 
 $('#by').addEventListener('input', syncPersonSort);
+$('#seasons').addEventListener('change', (e) => {
+  if (e.target.id === 'season-pick' && e.target.value) loadSeason(e.target.value);
+});
 
 // phones: dropdowns stay tucked behind the Filters button; the badge counts what's changed from default
 $('#filters-toggle').addEventListener('click', () => {

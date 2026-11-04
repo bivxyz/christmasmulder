@@ -42,11 +42,21 @@ button, input, select { font: inherit; color: inherit; }
 .me .link { background: none; color: #fff; padding: 0; text-decoration: underline; font-weight: 400; }
 
 .seasons { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 0; scrollbar-width: none; }
-.seasons button {
-  border: 0; background: transparent; color: #fff; opacity: .8; padding: 10px 16px; cursor: pointer;
-  border-radius: 10px 10px 0 0; font-weight: 600; white-space: nowrap;
+.tab {
+  display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: #fff; opacity: .85;
+  padding: 10px 16px; cursor: pointer; border-radius: 10px 10px 0 0; font-weight: 600; white-space: nowrap; text-decoration: none;
 }
-.seasons button[aria-current="true"] { background: var(--bg); color: var(--ink); opacity: 1; }
+.tab[aria-current="true"] { background: var(--bg); color: var(--ink); opacity: 1; }
+.tab:hover { opacity: 1; }
+/* the year picker looks like tab text with a caret */
+.tab--picker { position: relative; }
+.tab--picker select {
+  appearance: none; -webkit-appearance: none; border: 0; background: transparent; color: inherit;
+  font: inherit; padding: 0 20px 0 0; cursor: pointer; field-sizing: content; /* width follows the picked year */
+}
+.tab--picker::after { content: "▾"; position: absolute; right: 16px; pointer-events: none; font-size: 18px; line-height: 1; }
+.tab--picker select:focus-visible { outline: 2px solid var(--red); outline-offset: 4px; border-radius: 4px; }
+.tab--picker option { color: #2b1d17; background: #fff; }
 
 /* controls */
 .controls { display: flex; flex-wrap: wrap; gap: 10px; margin: 24px 0 8px; }
@@ -201,8 +211,6 @@ dialog label[for="member-name"] { display: block; font-size: 15px; font-weight: 
 }
 
 /* family tab sits with the season tabs */
-.seasons__family { color: #fff; opacity: .8; padding: 10px 16px; border-radius: 10px 10px 0 0; font-weight: 600; white-space: nowrap; text-decoration: none; }
-.seasons__family[aria-current="true"] { background: var(--bg); color: var(--ink); opacity: 1; }
 
 /* the family tree: a green triangle with ornaments hung in rows of 1, 2, 3... */
 .tree { position: relative; display: flex; flex-direction: column; align-items: center; gap: 14px; max-width: 560px; margin: 8px auto 0; padding: 0 0 40px; isolation: isolate; }
