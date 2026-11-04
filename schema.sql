@@ -12,7 +12,8 @@ INSERT OR IGNORE INTO members (id, name, sort, active) VALUES
   ('kitty', 'Kitty', 3, 1),
   ('sniff', 'Sniff', 4, 1),
   ('robin', 'Robin', 5, 1),
-  ('jen',   'Jen',   6, 0);
+  ('lola',  'Lola',  6, 1),
+  ('jen',   'Jen',   7, 0);
 
 CREATE TABLE IF NOT EXISTS movies (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,

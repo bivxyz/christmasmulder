@@ -171,6 +171,62 @@ async function favorite(request, env, me) {
   return json({ ok: true, on: true });
 }
 
+// Read-only CSV for Excel, laid out like Chris's sheet (10-point scores, his verdict codes).
+// Never writes to the Google Sheet.
+const VERDICT_CODES = { sucks: 'Sucks', 'turned-off': 'TO', skipped: 'DWD' };
+const csvCell = (v) => {
+  const s = v == null ? '' : String(v);
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+async function exportCsv(url, env) {
+  const season = url.searchParams.get('season') || 'all';
+  const where = season === 'all' ? '' : 'AND m.season = ?';
+  const moviesStmt = env.DB.prepare(`SELECT ${MOVIE_COLS} FROM movies m WHERE m.missing_since IS NULL ${where}
+    ORDER BY m.season = 'classics', m.season DESC, m.release_date IS NULL, m.release_date, m.row_order`);
+  const [members, movies] = await env.DB.batch([
+    env.DB.prepare('SELECT id, name FROM members ORDER BY sort'),
+    season === 'all' ? moviesStmt : moviesStmt.bind(season),
+  ]);
+  const rows = await withRatings(env, movies.results);
+  const names = Object.fromEntries(members.results.map((m) => [m.id, m.name]));
+  // only include people who have rated something in this export
+  const people = members.results.filter((p) => rows.some((m) => m.ratings[p.id]));
+
+  const header = ['Season', 'Release Date', 'Name', 'App', 'IMDB', 'Rec', 'View',
+    ...people.map((p) => p.name), 'Family Avg', 'Favorites', 'Comment', 'IMDb Link'];
+  const lines = [header];
+  for (const m of rows) {
+    const cells = people.map((p) => {
+      const r = m.ratings[p.id];
+      if (!r) return '';
+      if (r.score != null) return r.score;
+      if (r.verdict) return VERDICT_CODES[r.verdict] || r.verdict;
+      return r.watched ? 'X' : '';
+    });
+    const scores = Object.values(m.ratings).filter((r) => r.score != null).map((r) => Math.min(r.score, 10));
+    const avg = scores.length ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 : '';
+    lines.push([
+      m.season === 'classics' ? 'Classics' : m.season,
+      m.release_date || m.release_year || '',
+      m.title, m.network_code || m.network || '', m.imdb ?? '', m.rec || '', m.view || '',
+      ...cells, avg, (m.favorites || []).map((id) => names[id] || id).join(', '),
+      m.comment || '', m.imdb_id ? `https://www.imdb.com/title/${m.imdb_id}/` : '',
+    ]);
+  }
+  // BOM so Excel reads emoji and accents (Catnip Cafe) as UTF-8
+  const body = '﻿' + lines.map((l) => l.map(csvCell).join(',')).join('\r\n') + '\r\n';
+  const stamp = new Date().toISOString().slice(0, 10);
+  const label = season === 'all' ? 'all-seasons' : season;
+  return new Response(body, {
+    headers: {
+      'content-type': 'text/csv; charset=utf-8',
+      'content-disposition': `attachment; filename="christmas-movies-${label}-${stamp}.csv"`,
+      'cache-control': 'no-store',
+    },
+  });
+}
+
 async function login(request, env, secure) {
   const { member, code } = await request.json().catch(() => ({}));
   const row = await env.DB.prepare('SELECT id FROM members WHERE id = ? AND active = 1').bind(String(member || '')).first();
@@ -232,6 +288,7 @@ export default {
       if (route === 'GET /api/bootstrap') return bootstrap(request, env);
       if (route === 'GET /api/movies') return listMovies(url, env);
       if (route === 'GET /api/profile') return profile(url, env);
+      if (route === 'GET /api/export.csv') return exportCsv(url, env);
       if (route === 'POST /api/login') return login(request, env, secure);
       if (route === 'POST /api/logout') return json({ ok: true }, 200, { 'set-cookie': clearCookie(secure) });
 

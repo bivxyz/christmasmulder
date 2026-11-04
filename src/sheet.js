@@ -3,7 +3,7 @@
 
 export const MEMBER_ALIASES = {
   dad: 'dad', dada: 'dad',
-  dana: 'dana', kitty: 'kitty', sniff: 'sniff', robin: 'robin', jen: 'jen',
+  dana: 'dana', kitty: 'kitty', sniff: 'sniff', robin: 'robin', lola: 'lola', jen: 'jen',
 };
 
 export const NETWORK_NAMES = {

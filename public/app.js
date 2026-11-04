@@ -194,6 +194,7 @@ function renderMovies() {
   if (by) list = [...list].sort(by);
 
   if (sort === 'recent') list = list.filter((m) => Object.values(m.ratings).some(hasRated));
+  $('#csv-season').href = state.view === 'season' ? `/api/export.csv?season=${encodeURIComponent(state.season)}` : '/api/export.csv?season=all';
   $('#count').textContent = (state.view === 'rated' ? `${list.length} rated movies across every season` : `${list.length} of ${state.movies.length} movies`)
     + (show === 'unrated' && !state.me ? '... sign in to see what you haven\'t rated' : '');
   $('#movies').innerHTML = list.map(movieHtml).join('');

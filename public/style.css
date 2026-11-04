@@ -158,3 +158,9 @@ a.chip:hover { text-decoration: underline; }
 .fav__season { color: var(--muted); font-size: 13px; }
 .fav--slot .fav__title { color: var(--muted); font-weight: 400; }
 @media (max-width: 560px) { .favs { gap: 10px; } .fav__title { font-size: 13px; } }
+
+/* count + CSV download on one line */
+.countbar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; align-items: baseline; margin-bottom: 12px; }
+.countbar .count { margin: 0; }
+.export { margin: 0; font-size: 15px; color: var(--muted); }
+.export a { color: var(--red); }
