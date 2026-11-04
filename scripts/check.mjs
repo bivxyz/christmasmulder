@@ -20,7 +20,7 @@ check('2026 A Danish Christmas: Dad = sucks', danish?.ratings.dad?.verdict === '
 const miracles = find('classics', 'A Season for Miracles');
 check('classics A Season for Miracles: Dad 10, year 1999', miracles?.ratings.dad?.score === 10 && miracles.release_year === 1999, miracles);
 const frosty = find('2024', 'Hot Frosty (Lacy Chabert)');
-check('2024 Hot Frosty: Dad sucks, Sniff 5', frosty?.ratings.dad?.verdict === 'sucks' && frosty?.ratings.sniff?.score === 5, frosty?.ratings);
+check('2024 Hot Frosty: Dad sucks, Jen 5', frosty?.ratings.dad?.verdict === 'sucks' && frosty?.ratings.jen?.score === 5, frosty?.ratings);
 const santa = find('2023', 'The Santa Summit');
 check('2023 Santa Summit: Dad turned-off, Kitty 4', santa?.ratings.dad?.verdict === 'turned-off' && santa?.ratings.kitty?.score === 4, santa?.ratings);
 const tree = find('2021', 'My Christmas Family Tree');
@@ -36,7 +36,7 @@ check('no IMDB outside 0-10', movies.every((m) => m.imdb === null || (m.imdb > 0
 
 const dupes = movies.filter((m) => /5\.4 rating dog/.test(m.comment || '')).map((m) => `${m.season} ${m.title}`);
 check('"5.4 rating dog" note only on 2024 Merry Gentlemen', dupes.length === 1 && dupes[0] === '2024 The Merry Gentlemen', dupes);
-check('Jen maps to Sniff, no jen ratings', (await import('../src/sheet.js')).MEMBER_ALIASES.jen === 'sniff' && !movies.some((m) => m.ratings.jen), null);
+check('Sniff column maps to Jen, no sniff ratings', (await import('../src/sheet.js')).MEMBER_ALIASES.sniff === 'jen' && !movies.some((m) => m.ratings.sniff), null);
 check('2022 has its 7 movies', counts['2022'] === 7, counts['2022']);
 check('classics has 11 movies', counts.classics === 11, counts.classics);
 const kitty = find('classics', 'The Nine Lives of Christmas');

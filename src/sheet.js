@@ -3,8 +3,8 @@
 
 export const MEMBER_ALIASES = {
   dad: 'dad', dada: 'dad',
-  dana: 'dana', kitty: 'kitty', sniff: 'sniff', robin: 'robin', lola: 'lola',
-  jen: 'sniff', // Sniff went by Jen in the 2021 tab
+  dana: 'dana', kitty: 'kitty', jen: 'jen', robin: 'robin', lola: 'lola',
+  sniff: 'jen', // Chris's sheet calls the Jen column Sniff (2022 on)
 };
 
 export const NETWORK_NAMES = {

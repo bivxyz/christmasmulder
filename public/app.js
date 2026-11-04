@@ -413,6 +413,7 @@ window.addEventListener('resize', () => {
 async function route() {
   if (location.pathname === '/family') return showFamily();
   const m = location.pathname.match(/^\/u\/([a-z0-9-]+)/);
+  if (m?.[1] === 'sniff') { history.replaceState(null, '', '/u/jen'); return showProfile('jen'); } // old link
   if (m) return showProfile(m[1]);
   document.title = 'CHRIStmas Mulder';
   if (state.view === 'profile' || state.view === 'family' || !state.movies.length) {

@@ -10,7 +10,7 @@ INSERT OR IGNORE INTO members (id, name, sort, active) VALUES
   ('dad',   'Dad',   1, 1),
   ('dana',  'Dana',  2, 1),
   ('kitty', 'Kitty', 3, 1),
-  ('sniff', 'Sniff', 4, 1),
+  ('jen',   'Jen',   4, 1),
   ('robin', 'Robin', 5, 1),
   ('lola',  'Lola',  6, 1);
 

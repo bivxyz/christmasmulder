@@ -34,5 +34,6 @@ export async function currentMember(request, env) {
   if (!raw) return null;
   const [member, exp, sig] = raw.slice(COOKIE.length + 1).split('.');
   if (!member || !exp || !sig || +exp < Date.now() / 1000) return null;
-  return safeEqual(sig, await sign(env.COOKIE_SECRET, `${member}.${exp}`)) ? member : null;
+  if (!safeEqual(sig, await sign(env.COOKIE_SECRET, `${member}.${exp}`))) return null;
+  return member === 'sniff' ? 'jen' : member; // Sniff was renamed Jen; old sign-ins keep working
 }
