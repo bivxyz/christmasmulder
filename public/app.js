@@ -135,13 +135,13 @@ function renderMe() {
 // On the movie list, the Movies tab is a native year picker (phones get their own scroll wheel).
 // Anywhere else it's a plain tab that takes you back to the season you were on.
 function renderSeasons() {
-  const onMovies = state.view === 'season' || state.view === 'rated';
+  const onMovies = state.view === 'season' || state.view === 'rated' || state.view === 'search';
   const current = state.season || state.seasons[0]?.season;
   let movies;
   if (onMovies) {
     const options = state.seasons.map((s) =>
       `<option value="${s.season}"${state.view === 'season' && s.season === state.season ? ' selected' : ''}>${seasonLabel(s.season)}</option>`).join('');
-    const all = state.view === 'rated' ? '<option value="" selected>All years</option>' : '';
+    const all = state.view === 'rated' || state.view === 'search' ? '<option value="" selected>All years</option>' : '';
     movies = `<label class="tab tab--picker" aria-current="true">🎬
       <select id="season-pick" aria-label="Season">${all}${options}</select></label>`;
   } else {
@@ -210,7 +210,8 @@ function renderMovies() {
   if (by) list = [...list].sort(by);
 
   if (sort === 'recent') list = list.filter((m) => Object.values(m.ratings).some(hasRated));
-  $('#count').textContent = (state.view === 'rated' ? `${list.length} rated movies across every season` : `${list.length} of ${state.movies.length} movies`)
+  $('#count').textContent = (state.view === 'search' ? `${list.length} ${list.length === 1 ? 'match' : 'matches'} across every season`
+    : state.view === 'rated' ? `${list.length} rated movies across every season` : `${list.length} of ${state.movies.length} movies`)
     + (show === 'unrated' && !state.me ? '... sign in to see what you haven\'t rated' : '');
   $('#movies').innerHTML = list.map(movieHtml).join('');
 }
@@ -254,10 +255,11 @@ function showList() {
 
 async function loadSeason(season) {
   if (location.pathname !== '/') history.pushState(null, '', '/');
-  document.title = 'Christmas Mulder';
+  document.title = 'CHRIStmas Mulder';
   showList();
   state.view = 'season';
   if ($('#sort').value === 'recent') $('#sort').value = 'date';
+  $('#q').value = '';
   state.season = season;
   store.set('season', season);
   renderSeasons();
@@ -269,6 +271,17 @@ async function loadSeason(season) {
 }
 
 // Recently rated looks across every season
+// Search looks through every season, not just the year in the picker
+async function loadAll() {
+  showList();
+  state.view = 'search';
+  renderSeasons();
+  $('#count').textContent = 'Searching every season...';
+  state.movies = await api('/api/movies?season=all');
+  renderNetworks();
+  renderMovies();
+}
+
 async function loadRated() {
   showList();
   state.view = 'rated';
@@ -310,7 +323,7 @@ async function showProfile(id) {
   const statLine = [
     `${stats.rated || 0} rated`, avg, stats.fives ? `${stats.fives} rated 4.5★ or better` : null, stats.sucks ? `${stats.sucks} 💩` : null,
   ].filter(Boolean).join(' · ');
-  document.title = `${member.name} · Christmas Mulder`;
+  document.title = `${member.name} · CHRIStmas Mulder`;
   view.innerHTML = `<a href="/" data-nav class="back">← All movies</a>
     <h2 class="profile__name">${esc(member.name)}${mine ? ' <small>(you)</small>' : ''}</h2>
     <p class="profile__stats">${statLine}</p>
@@ -381,7 +394,7 @@ async function showFamily() {
   view.hidden = false;
   state.view = 'family';
   renderSeasons();
-  document.title = 'Family · Christmas Mulder';
+  document.title = 'Family · CHRIStmas Mulder';
   view.innerHTML = '<p class="count">Loading...</p>';
   familyCache = await api('/api/family');
   view.innerHTML = `<h2 class="profile__name">The family</h2>
@@ -401,7 +414,7 @@ async function route() {
   if (location.pathname === '/family') return showFamily();
   const m = location.pathname.match(/^\/u\/([a-z0-9-]+)/);
   if (m) return showProfile(m[1]);
-  document.title = 'Christmas Mulder';
+  document.title = 'CHRIStmas Mulder';
   if (state.view === 'profile' || state.view === 'family' || !state.movies.length) {
     const saved = store.get('season');
     const season = state.seasons.some((s) => s.season === saved) ? saved : state.seasons[0]?.season;
@@ -668,8 +681,17 @@ function countFilters() {
 for (const id of ['#network', '#show', '#by', '#sort']) $(id).addEventListener('input', countFilters);
 // Recently rated swaps the data to every season; leaving it goes back to the season tab
 $('#sort').addEventListener('change', () => {
+  if (state.view === 'search') return; // search already covers every season; the sort just reorders it
   if ($('#sort').value === 'recent' && state.view !== 'rated') loadRated();
   else if ($('#sort').value !== 'recent' && state.view === 'rated') loadSeason(state.season);
+});
+// typing switches to every season; clearing the box goes back where you were
+$('#q').addEventListener('input', () => {
+  const q = $('#q').value.trim();
+  if (q && state.view !== 'search') loadAll();
+  else if (!q && state.view === 'search') {
+    if ($('#sort').value === 'recent') loadRated(); else loadSeason(state.season);
+  }
 });
 window.addEventListener('popstate', route);
 for (const id of ['#q', '#network', '#show', '#by', '#sort']) $(id).addEventListener('input', renderMovies);

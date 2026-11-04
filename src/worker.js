@@ -130,6 +130,9 @@ async function listMovies(url, env) {
   const stmt = season === 'rated'
     ? env.DB.prepare(`SELECT ${MOVIE_COLS} FROM movies m WHERE m.missing_since IS NULL
         AND EXISTS (SELECT 1 FROM ratings r WHERE r.movie_id = m.id AND ${RATED})`)
+    : season === 'all'
+    ? env.DB.prepare(`SELECT ${MOVIE_COLS} FROM movies m WHERE m.missing_since IS NULL
+        ORDER BY m.season = 'classics', m.season DESC, m.release_date IS NULL, m.release_date, m.row_order`)
     : env.DB.prepare(`SELECT ${MOVIE_COLS} FROM movies m WHERE m.season = ? AND m.missing_since IS NULL
         ORDER BY m.release_date IS NULL, m.release_date, m.row_order`).bind(season);
   return json(await withRatings(env, (await stmt.all()).results));
