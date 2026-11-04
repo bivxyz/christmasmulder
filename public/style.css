@@ -133,3 +133,28 @@ dialog #code { width: 100%; border: 1px solid var(--line); border-radius: 10px; 
   .logo { font-size: 52px; }
   .me { width: 100%; text-align: left; }
 }
+
+/* favorites button: grey until it's yours */
+.pill--fav { font-size: 18px; padding: 0 8px; filter: grayscale(1); opacity: .6; }
+.pill--fav[aria-pressed="true"], .pill--fav:hover { filter: none; opacity: 1; background: var(--red-soft); border-color: var(--red); }
+a.chip { color: inherit; text-decoration: none; }
+a.chip:hover { text-decoration: underline; }
+.me a { color: #fff; }
+
+/* profile page */
+.profile { padding-top: 24px; }
+.back { color: var(--muted); font-size: 15px; text-decoration: none; }
+.back:hover { color: var(--ink); }
+.profile__name { font: 800 clamp(36px, 6vw, 52px)/1.05 var(--display); letter-spacing: -0.02em; margin: 12px 0 4px; }
+.profile__name small { font: 400 18px var(--body); color: var(--muted); letter-spacing: 0; }
+.profile__stats { color: var(--muted); margin: 0 0 28px; }
+.profile__h { font: 600 22px/1.2 var(--display); margin: 32px 0 12px; }
+.favs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; max-width: 720px; }
+.fav { display: flex; flex-direction: column; gap: 6px; color: inherit; text-decoration: none; min-width: 0; }
+.fav img, .fav__empty { width: 100%; aspect-ratio: 2 / 3; border-radius: 8px; object-fit: cover; background: var(--red-soft); }
+.fav__empty { display: grid; place-items: center; font-size: 40px; }
+.fav--slot .fav__empty { background: transparent; border: 2px dashed var(--line); filter: grayscale(1); opacity: .5; }
+.fav__title { font-weight: 600; font-size: 15px; line-height: 1.3; }
+.fav__season { color: var(--muted); font-size: 13px; }
+.fav--slot .fav__title { color: var(--muted); font-weight: 400; }
+@media (max-width: 560px) { .favs { gap: 10px; } .fav__title { font-size: 13px; } }

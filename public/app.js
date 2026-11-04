@@ -5,7 +5,7 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode */ } },
 };
 
-const state = { me: null, members: [], seasons: [], season: null, movies: [], lastSync: null };
+const state = { me: null, members: [], seasons: [], season: null, view: 'season', movies: [], lastSync: null };
 const today = new Date().toISOString().slice(0, 10);
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -42,8 +42,14 @@ function dateHtml(m) {
   return m.release_year ? `${m.release_year}` : '';
 }
 
-function chip(memberId, r) {
-  const name = esc(memberName(memberId));
+function chip(memberId, r, fav) {
+  return chipBody(memberId, r || {}, fav)
+    .replace(/^<span class="([^"]*)"/, `<a href="/u/${memberId}" data-nav class="$1"`).replace(/<\/span>$/, '</a>');
+}
+
+function chipBody(memberId, r, fav) {
+  const name = esc(memberName(memberId)) + (fav ? ' 🌟' : '');
+  if (!r.score && r.score !== 0 && !r.verdict && !r.watched) return `<span class="chip" title="One of their favorites">${name}</span>`;
   const from = r.source === 'sheet' ? ' (from the sheet)' : '';
   if (r.score != null) {
     const extra = r.score > 10 ? ` ... a ${r.score}/10!` : '';
@@ -69,7 +75,9 @@ function familyHtml(m) {
   const head = avg == null
     ? '<span class="family__none">No family ratings yet 🍿</span>'
     : `<div class="family__avg">${starsHtml(avg)} <b title="${avg.toFixed(1)}/10">${fmtStars(Math.round(stars(avg) * 10) / 10)}</b></div>`;
-  const others = state.members.map((mem) => (m.ratings[mem.id] && mem.id !== state.me ? chip(mem.id, m.ratings[mem.id]) : '')).join('');
+  const favs = m.favorites || [];
+  const others = state.members.map((mem) => ((m.ratings[mem.id] || favs.includes(mem.id)) && mem.id !== state.me
+    ? chip(mem.id, m.ratings[mem.id], favs.includes(mem.id)) : '')).join('');
   return `${head}${others ? `<div class="chips">${others}</div>` : ''}${n ? '' : ''}`;
 }
 
@@ -84,6 +92,7 @@ function mineHtml(m) {
     <div class="mine__row">
       <span class="rater" data-movie="${m.id}">${starsHtml(score)}<span class="rater__hit">${hits}</span></span>
       <button type="button" class="pill pill--poop" data-sucks="${m.id}" aria-pressed="${sucks}" title="It sucked" aria-label="It sucked">💩</button>
+      <button type="button" class="pill pill--fav" data-fav="${m.id}" aria-pressed="${(m.favorites || []).includes(state.me)}" title="One of my favorites" aria-label="One of my favorites">🌟</button>
     </div>`;
 }
 
@@ -92,6 +101,7 @@ function movieHtml(m) {
   const meta = [
     m.network ? `<span title="${esc(m.network_code)}">${esc(m.network)}</span>` : '',
     m.imdb != null ? `IMDB ${m.imdb.toFixed(1)}` : '',
+    state.view !== 'season' && m.season ? seasonLabel(m.season) : '',
     $('#sort').value === 'recent' ? lastRatedText(m) : '',
   ].filter(Boolean).join(' · ');
   const imdbUrl = m.imdb_id ? `https://www.imdb.com/title/${m.imdb_id}/` : null;
@@ -116,13 +126,13 @@ function movieHtml(m) {
 
 function renderMe() {
   $('#me').innerHTML = state.me
-    ? `Rating as <b>${esc(memberName(state.me))}</b><br><button class="link" id="logout">sign out</button>`
+    ? `Rating as <a href="/u/${state.me}" data-nav><b>${esc(memberName(state.me))}</b></a> 🌟<br><button class="link" id="logout">sign out</button>`
     : '<button id="signin">Sign in to rate</button>';
 }
 
 function renderSeasons() {
   $('#seasons').innerHTML = state.seasons.map((s) =>
-    `<button type="button" data-season="${s.season}" aria-current="${s.season === state.season}">${seasonLabel(s.season)}</button>`).join('');
+    `<button type="button" data-season="${s.season}" aria-current="${state.view === 'season' && s.season === state.season}">${seasonLabel(s.season)}</button>`).join('');
 }
 
 function renderNetworks() {
@@ -184,7 +194,7 @@ function renderMovies() {
   if (by) list = [...list].sort(by);
 
   if (sort === 'recent') list = list.filter((m) => Object.values(m.ratings).some(hasRated));
-  $('#count').textContent = `${list.length} of ${state.movies.length} movies`
+  $('#count').textContent = (state.view === 'rated' ? `${list.length} rated movies across every season` : `${list.length} of ${state.movies.length} movies`)
     + (show === 'unrated' && !state.me ? '... sign in to see what you haven\'t rated' : '');
   $('#movies').innerHTML = list.map(movieHtml).join('');
 }
@@ -221,7 +231,15 @@ function timeAgo(iso) {
 
 // ---------- actions ----------
 
+function showList() {
+  $('#list-view').hidden = false;
+  $('#profile-view').hidden = true;
+}
+
 async function loadSeason(season) {
+  showList();
+  state.view = 'season';
+  if ($('#sort').value === 'recent') $('#sort').value = 'date';
   state.season = season;
   store.set('season', season);
   renderSeasons();
@@ -232,16 +250,90 @@ async function loadSeason(season) {
   renderMovies();
 }
 
+// Recently rated looks across every season
+async function loadRated() {
+  showList();
+  state.view = 'rated';
+  renderSeasons();
+  $('#movies').innerHTML = '';
+  $('#count').textContent = 'Loading...';
+  state.movies = await api('/api/movies?season=rated');
+  renderNetworks();
+  renderMovies();
+}
+
+function posterCard(m) {
+  const img = m.poster_url
+    ? `<img src="${esc(m.poster_url)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
+    : '<span class="fav__empty">🎄</span>';
+  return `<a class="fav" href="${m.imdb_id ? `https://www.imdb.com/title/${m.imdb_id}/` : '#'}" target="_blank" rel="noopener">
+    ${img}<span class="fav__title">${esc(m.title)}</span><span class="fav__season">${seasonLabel(m.season)}</span></a>`;
+}
+
+async function showProfile(id) {
+  $('#list-view').hidden = true;
+  const view = $('#profile-view');
+  view.hidden = false;
+  state.view = 'profile';
+  renderSeasons();
+  view.innerHTML = '<p class="count">Loading...</p>';
+  let data;
+  try { data = await api(`/api/profile?member=${encodeURIComponent(id)}`); } catch (err) {
+    view.innerHTML = `<p class="count">${esc(err.message)}</p>`;
+    return;
+  }
+  const { member, favorites, recent, stats } = data;
+  const seen = new Set();
+  state.movies = [...favorites, ...recent].filter((m) => !seen.has(m.id) && seen.add(m.id));
+  const mine = member.id === state.me;
+  const slots = [...favorites.map(posterCard)];
+  while (slots.length < 4) slots.push(`<div class="fav fav--slot"><span class="fav__empty">🌟</span><span class="fav__title">${mine ? 'Star a movie to fill this' : 'Empty'}</span></div>`);
+  const avg = stats.avg != null ? `${fmtStars(Math.round(stars(stats.avg) * 10) / 10)}★ average` : null;
+  const statLine = [
+    `${stats.rated || 0} rated`, avg, stats.fives ? `${stats.fives} rated 4.5★ or better` : null, stats.sucks ? `${stats.sucks} 💩` : null,
+  ].filter(Boolean).join(' · ');
+  document.title = `${member.name} · Christmas Mulder`;
+  view.innerHTML = `<a href="/" data-nav class="back">← All movies</a>
+    <h2 class="profile__name">${esc(member.name)}${mine ? ' <small>(you)</small>' : ''}</h2>
+    <p class="profile__stats">${statLine}</p>
+    <h3 class="profile__h">🌟 Favorites</h3>
+    <div class="favs">${slots.join('')}</div>
+    <h3 class="profile__h">Recent ratings</h3>
+    ${recent.length ? `<ol class="movies">${recent.map(movieHtml).join('')}</ol>` : '<p class="count">Nothing rated yet.</p>'}`;
+}
+
+async function route() {
+  const m = location.pathname.match(/^\/u\/([a-z0-9-]+)/);
+  if (m) return showProfile(m[1]);
+  document.title = 'Christmas Mulder';
+  if (state.view === 'profile' || !state.movies.length) {
+    const saved = store.get('season');
+    const season = state.seasons.some((s) => s.season === saved) ? saved : state.seasons[0]?.season;
+    if (season) return loadSeason(season);
+    $('#count').textContent = 'No movies yet... the sheet hasn\'t been synced.';
+  }
+}
+
 async function boot() {
   const data = await api('/api/bootstrap');
   Object.assign(state, { me: data.me, members: data.members, seasons: data.seasons, lastSync: data.lastSync });
   renderMe();
   renderBy();
   renderFooter();
-  const saved = store.get('season');
-  const season = state.seasons.some((s) => s.season === saved) ? saved : state.seasons[0]?.season;
-  if (season) await loadSeason(season);
-  else $('#count').textContent = 'No movies yet... the sheet hasn\'t been synced.';
+  await route();
+}
+
+async function toggleFavorite(movieId, on) {
+  const m = state.movies.find((x) => x.id === movieId);
+  try {
+    await api('/api/favorite', { method: 'POST', body: { movie_id: movieId, on } });
+    m.favorites = (m.favorites || []).filter((id) => id !== state.me);
+    if (on) m.favorites.push(state.me);
+    if (state.view === 'profile') return route();
+    document.querySelector(`.movie[data-id="${movieId}"]`).outerHTML = movieHtml(m);
+  } catch (err) {
+    alert(err.message);
+  }
 }
 
 async function saveRating(movieId, body) {
@@ -280,6 +372,14 @@ document.addEventListener('click', async (e) => {
     // tapping your current score again clears it
     return saveRating(movieId, current?.source === 'site' && current.score === score ? { score: null } : { score });
   }
+  const nav = t.closest('a[data-nav]');
+  if (nav && !e.metaKey && !e.ctrlKey) {
+    e.preventDefault();
+    history.pushState(null, '', nav.getAttribute('href'));
+    return route();
+  }
+  const fav = t.closest('[data-fav]');
+  if (fav) return toggleFavorite(+fav.dataset.fav, fav.getAttribute('aria-pressed') !== 'true');
   const sucks = t.closest('[data-sucks]');
   if (sucks) {
     const pressed = sucks.getAttribute('aria-pressed') === 'true';
@@ -327,6 +427,12 @@ $('#login-form').addEventListener('submit', async (e) => {
 });
 
 $('#by').addEventListener('input', syncPersonSort);
+// Recently rated swaps the data to every season; leaving it goes back to the season tab
+$('#sort').addEventListener('change', () => {
+  if ($('#sort').value === 'recent' && state.view !== 'rated') loadRated();
+  else if ($('#sort').value !== 'recent' && state.view === 'rated') loadSeason(state.season);
+});
+window.addEventListener('popstate', route);
 for (const id of ['#q', '#network', '#show', '#by', '#sort']) $(id).addEventListener('input', renderMovies);
 
 boot().catch((err) => { $('#count').textContent = `Couldn't load: ${err.message}`; });

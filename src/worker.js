@@ -95,20 +95,80 @@ async function bootstrap(request, env) {
   });
 }
 
-async function listMovies(url, env) {
-  const season = url.searchParams.get('season');
-  if (!season) return fail(400, 'season is required');
-  const [movies, ratings] = await env.DB.batch([
-    env.DB.prepare(`SELECT id, title, release_date, release_year, network, network_code, imdb, rec, view, comment, imdb_id, poster_url
-      FROM movies WHERE season = ? AND missing_since IS NULL ORDER BY release_date IS NULL, release_date, row_order`).bind(season),
-    env.DB.prepare(`SELECT r.movie_id, r.member_id, r.score, r.verdict, r.watched, r.source, r.rated_at FROM ratings r
-      JOIN movies m ON m.id = r.movie_id WHERE m.season = ? AND m.missing_since IS NULL`).bind(season),
+const MOVIE_COLS = `m.id, m.season, m.title, m.release_date, m.release_year, m.network, m.network_code, m.imdb,
+  m.rec, m.view, m.comment, m.imdb_id, m.poster_url`;
+const RATED = `(r.score IS NOT NULL OR r.verdict IS NOT NULL)`;
+const MAX_FAVORITES = 4;
+
+// Attaches { ratings: {member: {...}}, favorites: [member ids] } to a list of movie rows.
+async function withRatings(env, movies) {
+  if (!movies.length) return [];
+  // the whole family's ratings are a few hundred rows; cheaper than fighting D1's 100-parameter cap
+  const ids = new Set(movies.map((m) => m.id));
+  const [allRatings, allFavs] = await env.DB.batch([
+    env.DB.prepare('SELECT movie_id, member_id, score, verdict, watched, source, rated_at FROM ratings'),
+    env.DB.prepare('SELECT movie_id, member_id FROM favorites ORDER BY created_at'),
   ]);
+  const ratings = { results: allRatings.results.filter((r) => ids.has(r.movie_id)) };
+  const favs = { results: allFavs.results.filter((f) => ids.has(f.movie_id)) };
   const byMovie = {};
   for (const r of ratings.results) {
     (byMovie[r.movie_id] ||= {})[r.member_id] = { score: r.score, verdict: r.verdict, watched: r.watched, source: r.source, rated_at: r.rated_at };
   }
-  return json(movies.results.map((m) => ({ ...m, ratings: byMovie[m.id] || {} })));
+  const favBy = {};
+  for (const f of favs.results) (favBy[f.movie_id] ||= []).push(f.member_id);
+  return movies.map((m) => ({ ...m, ratings: byMovie[m.id] || {}, favorites: favBy[m.id] || [] }));
+}
+
+// season=2026 etc, or season=rated for every rated movie across all seasons (the Recently rated view)
+async function listMovies(url, env) {
+  const season = url.searchParams.get('season');
+  if (!season) return fail(400, 'season is required');
+  const stmt = season === 'rated'
+    ? env.DB.prepare(`SELECT ${MOVIE_COLS} FROM movies m WHERE m.missing_since IS NULL
+        AND EXISTS (SELECT 1 FROM ratings r WHERE r.movie_id = m.id AND ${RATED})`)
+    : env.DB.prepare(`SELECT ${MOVIE_COLS} FROM movies m WHERE m.season = ? AND m.missing_since IS NULL
+        ORDER BY m.release_date IS NULL, m.release_date, m.row_order`).bind(season);
+  return json(await withRatings(env, (await stmt.all()).results));
+}
+
+async function profile(url, env) {
+  const id = url.searchParams.get('member');
+  const member = await env.DB.prepare('SELECT id, name, active FROM members WHERE id = ?').bind(String(id || '')).first();
+  if (!member) return fail(404, 'no such family member');
+  const [favs, recent, stats] = await env.DB.batch([
+    env.DB.prepare(`SELECT ${MOVIE_COLS} FROM favorites f JOIN movies m ON m.id = f.movie_id
+      WHERE f.member_id = ? ORDER BY f.created_at`).bind(member.id),
+    env.DB.prepare(`SELECT ${MOVIE_COLS} FROM ratings r JOIN movies m ON m.id = r.movie_id
+      WHERE r.member_id = ? AND ${RATED} AND m.missing_since IS NULL
+      ORDER BY r.rated_at IS NULL, r.rated_at DESC, m.release_date DESC LIMIT 12`).bind(member.id),
+    env.DB.prepare(`SELECT COUNT(*) AS rated, AVG(MIN(r.score, 10)) AS avg,
+        SUM(r.verdict = 'sucks') AS sucks, SUM(r.score >= 9) AS fives
+      FROM ratings r WHERE r.member_id = ? AND ${RATED}`).bind(member.id),
+  ]);
+  return json({
+    member,
+    favorites: await withRatings(env, favs.results),
+    recent: await withRatings(env, recent.results),
+    stats: stats.results[0],
+  });
+}
+
+async function favorite(request, env, me) {
+  const { movie_id, on } = await request.json().catch(() => ({}));
+  const movieId = Number(movie_id);
+  if (!Number.isInteger(movieId)) return fail(400, 'movie_id is required');
+  if (!on) {
+    await env.DB.prepare('DELETE FROM favorites WHERE member_id = ? AND movie_id = ?').bind(me, movieId).run();
+    return json({ ok: true, on: false });
+  }
+  const movie = await env.DB.prepare('SELECT id FROM movies WHERE id = ?').bind(movieId).first();
+  if (!movie) return fail(404, 'no such movie');
+  const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM favorites WHERE member_id = ? AND movie_id != ?').bind(me, movieId).first();
+  if (count.n >= MAX_FAVORITES) return fail(409, `you already have ${MAX_FAVORITES} favorites... un-star one first`);
+  await env.DB.prepare('INSERT OR IGNORE INTO favorites (member_id, movie_id, created_at) VALUES (?, ?, ?)')
+    .bind(me, movieId, new Date().toISOString()).run();
+  return json({ ok: true, on: true });
 }
 
 async function login(request, env, secure) {
@@ -171,6 +231,7 @@ export default {
     try {
       if (route === 'GET /api/bootstrap') return bootstrap(request, env);
       if (route === 'GET /api/movies') return listMovies(url, env);
+      if (route === 'GET /api/profile') return profile(url, env);
       if (route === 'POST /api/login') return login(request, env, secure);
       if (route === 'POST /api/logout') return json({ ok: true }, 200, { 'set-cookie': clearCookie(secure) });
 
@@ -183,6 +244,7 @@ export default {
 
       const me = await currentMember(request, env);
       if (route === 'POST /api/rate') return me ? rate(request, env, me) : fail(401, 'sign in to rate');
+      if (route === 'POST /api/favorite') return me ? favorite(request, env, me) : fail(401, 'sign in first');
       if (route === 'POST /api/sync') return me ? syncNow(env) : fail(401, 'sign in first');
       return fail(404, 'not found');
     } catch (err) {

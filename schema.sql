@@ -60,3 +60,11 @@ CREATE TABLE IF NOT EXISTS login_failures (
   at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS login_failures_ip ON login_failures (ip, at);
+
+-- Letterboxd-style favorites: up to 4 per member
+CREATE TABLE IF NOT EXISTS favorites (
+  member_id  TEXT NOT NULL REFERENCES members(id),
+  movie_id   INTEGER NOT NULL REFERENCES movies(id),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (member_id, movie_id)
+);
