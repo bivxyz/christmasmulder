@@ -1,0 +1,6 @@
+node_modules/
+.wrangler/
+.dev.vars
+scripts/fixtures/
+.DS_Store
+.prod-secrets

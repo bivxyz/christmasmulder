@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "christmasmulder",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-10-01",
+  "assets": { "directory": "public", "binding": "ASSETS" },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "christmasmulder", "database_id": "1fbaab9f-cf88-4b27-9d1b-eca3b3cc8372" }
+  ],
+  // pull Chris's sheet hourly in season (Oct-Dec), daily the rest of the year
+  "triggers": { "crons": ["17 * * 10-12 *", "17 9 * 1-9 *"] },
+  "observability": { "enabled": true },
+  "workers_dev": true,
+  // secrets: SHEET_ID, FAMILY_CODE, COOKIE_SECRET, ADMIN_TOKEN  (npx wrangler secret put NAME)
+  // SHEET_ID stays a secret: the sheet is link-shared, so its id is the only thing gating it
+  "routes": [
+    { "pattern": "christmasmulder.com", "custom_domain": true },
+    { "pattern": "www.christmasmulder.com", "custom_domain": true }
+  ]
+}

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Christmas Mulder</title>
+  <meta name="description" content="Chris Mulder's list of every new Christmas movie, rated by the family.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎄</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="masthead">
+    <div class="wrap masthead__inner">
+      <!-- temporary logo; Chris's bitmoji goes here once we have the file -->
+      <span class="logo" role="img" aria-label="Christmas tree">🎄</span>
+      <div class="masthead__text">
+        <h1>Christmas Mulder</h1>
+        <p>Chris's list of every new Christmas movie... rated by the family.</p>
+      </div>
+      <div class="me" id="me"></div>
+    </div>
+    <nav class="wrap seasons" id="seasons" aria-label="Seasons"></nav>
+  </header>
+
+  <main class="wrap">
+    <div class="controls">
+      <input id="q" type="search" placeholder="Search titles" aria-label="Search titles">
+      <select id="network" aria-label="Network"></select>
+      <select id="show" aria-label="Show">
+        <option value="all">All movies</option>
+        <option value="aired">Already aired</option>
+        <option value="upcoming">Coming up</option>
+        <option value="unrated">I haven't rated</option>
+      </select>
+      <select id="sort" aria-label="Sort">
+        <option value="date">Air date</option>
+        <option value="family">Family score</option>
+        <option value="imdb">IMDB</option>
+        <option value="title">Title</option>
+      </select>
+    </div>
+    <p class="count" id="count"></p>
+    <ol class="movies" id="movies"></ol>
+  </main>
+
+  <footer class="wrap footer" id="footer"></footer>
+
+  <dialog id="login">
+    <form method="dialog" id="login-form">
+      <h2>Who's rating?</h2>
+      <div class="names" id="names"></div>
+      <label for="code">Family code</label>
+      <input id="code" name="code" autocomplete="current-password" required>
+      <p class="error" id="login-error"></p>
+      <div class="dialog__actions">
+        <button type="button" class="btn btn--ghost" id="login-cancel">Cancel</button>
+        <button type="submit" class="btn">Sign in</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
