@@ -135,6 +135,19 @@ async function listMovies(url, env) {
   return json(await withRatings(env, (await stmt.all()).results));
 }
 
+// Everyone, with what the tree needs: rating count and their #1 favorite's poster.
+async function family(env) {
+  const { results } = await env.DB.prepare(`
+    SELECT p.id, p.name,
+      (SELECT COUNT(*) FROM ratings r WHERE r.member_id = p.id AND ${RATED}) AS rated,
+      (SELECT m.poster_url FROM favorites f JOIN movies m ON m.id = f.movie_id
+        WHERE f.member_id = p.id ORDER BY f.created_at LIMIT 1) AS poster_url,
+      (SELECT m.title FROM favorites f JOIN movies m ON m.id = f.movie_id
+        WHERE f.member_id = p.id ORDER BY f.created_at LIMIT 1) AS favorite
+    FROM members p WHERE p.active = 1 ORDER BY p.sort`).all();
+  return json(results);
+}
+
 async function profile(url, env) {
   const id = url.searchParams.get('member');
   const member = await env.DB.prepare('SELECT id, name, active FROM members WHERE id = ?').bind(String(id || '')).first();
@@ -307,6 +320,7 @@ export default {
       if (route === 'GET /api/bootstrap') return bootstrap(request, env);
       if (route === 'GET /api/movies') return listMovies(url, env);
       if (route === 'GET /api/profile') return profile(url, env);
+      if (route === 'GET /api/family') return family(env);
       if (route === 'GET /api/export.csv') return exportCsv(url, env);
       if (route === 'POST /api/login') return login(request, env, secure);
       if (route === 'POST /api/logout') return json({ ok: true }, 200, { 'set-cookie': clearCookie(secure) });

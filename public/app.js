@@ -132,8 +132,10 @@ function renderMe() {
 }
 
 function renderSeasons() {
-  $('#seasons').innerHTML = state.seasons.map((s) =>
-    `<button type="button" data-season="${s.season}" aria-current="${state.view === 'season' && s.season === state.season}">${seasonLabel(s.season)}</button>`).join('');
+  // Family goes first so it's visible on phones, where the tabs scroll sideways
+  $('#seasons').innerHTML = `<a href="/family" data-nav class="seasons__family" aria-current="${state.view === 'family'}">🎄 Family</a>`
+    + state.seasons.map((s) =>
+      `<button type="button" data-season="${s.season}" aria-current="${state.view === 'season' && s.season === state.season}">${seasonLabel(s.season)}</button>`).join('');
 }
 
 function renderNetworks() {
@@ -238,6 +240,8 @@ function showList() {
 }
 
 async function loadSeason(season) {
+  if (location.pathname !== '/') history.pushState(null, '', '/');
+  document.title = 'Christmas Mulder';
   showList();
   state.view = 'season';
   if ($('#sort').value === 'recent') $('#sort').value = 'date';
@@ -300,14 +304,56 @@ async function showProfile(id) {
     <h3 class="profile__h">🌟 Favorites</h3>
     <div class="favs">${slots.join('')}</div>
     <h3 class="profile__h">Recent ratings</h3>
-    ${recent.length ? `<ol class="movies">${recent.map(movieHtml).join('')}</ol>` : '<p class="count">Nothing rated yet.</p>'}`;
+    ${recent.length ? `<ol class="movies">${recent.map(movieHtml).join('')}</ol>` : '<p class="count">Nothing rated yet.</p>'}
+    <h3 class="profile__h">More of the family</h3>
+    <div class="strip" id="family-strip"></div>`;
+  const people = await api('/api/family').catch(() => []);
+  const strip = $('#family-strip');
+  if (strip) strip.innerHTML = people.map((p, i) => (p.id === member.id ? '' : ornament(p, i, true))).join('')
+    + '<a class="strip__all" href="/family" data-nav>🎄 Whole tree</a>';
+}
+
+const ORNAMENTS = ['#c8102e', '#d4a017', '#1e6fb8', '#7b2d8e', '#e0662b', '#0f8a6a'];
+
+function ornament(p, i, small) {
+  const ball = p.poster_url
+    ? `<img src="${esc(p.poster_url)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
+    : `<span>${esc(p.name.slice(0, 1))}</span>`;
+  const sub = small ? '' : `<span class="ornament__stat">${p.rated ? `${p.rated} rated` : 'no ratings yet'}</span>`;
+  const title = p.favorite ? `${p.name}... favorite: ${p.favorite}` : p.name;
+  return `<a class="ornament${small ? ' ornament--sm' : ''}" href="/u/${p.id}" data-nav title="${esc(title)}" style="--c:${ORNAMENTS[i % ORNAMENTS.length]}">
+    <span class="ornament__ball">${ball}</span><span class="ornament__name">${esc(p.name)}</span>${sub}</a>`;
+}
+
+// rows of 1, 2, 3... like a tree; adding family grows it a row
+function treeRows(people) {
+  const rows = [];
+  for (let i = 0, n = 1; i < people.length; n++) { rows.push(people.slice(i, i + n)); i += n; }
+  return rows;
+}
+
+async function showFamily() {
+  $('#list-view').hidden = true;
+  const view = $('#profile-view');
+  view.hidden = false;
+  state.view = 'family';
+  renderSeasons();
+  document.title = 'Family tree · Christmas Mulder';
+  view.innerHTML = '<p class="count">Loading...</p>';
+  const people = await api('/api/family');
+  let i = 0;
+  const rows = treeRows(people).map((row) => `<div class="tree__row">${row.map((p) => ornament(p, i++)).join('')}</div>`).join('');
+  view.innerHTML = `<h2 class="profile__name">The family tree</h2>
+    <p class="profile__stats">Tap an ornament to see someone's favorites and ratings.</p>
+    <div class="tree"><span class="tree__star" aria-hidden="true">🌟</span>${rows}<span class="tree__trunk" aria-hidden="true"></span></div>`;
 }
 
 async function route() {
+  if (location.pathname === '/family') return showFamily();
   const m = location.pathname.match(/^\/u\/([a-z0-9-]+)/);
   if (m) return showProfile(m[1]);
   document.title = 'Christmas Mulder';
-  if (state.view === 'profile' || !state.movies.length) {
+  if (state.view === 'profile' || state.view === 'family' || !state.movies.length) {
     const saved = store.get('season');
     const season = state.seasons.some((s) => s.season === saved) ? saved : state.seasons[0]?.season;
     if (season) return loadSeason(season);
