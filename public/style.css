@@ -59,7 +59,7 @@ button, input, select { font: inherit; color: inherit; }
 /* movie rows */
 .movies { list-style: none; margin: 0; padding: 0; }
 .movie {
-  display: grid; grid-template-columns: 64px 64px minmax(0, 1fr) 210px 200px; gap: 20px; align-items: center;
+  display: grid; grid-template-columns: 64px 64px minmax(0, 1fr) 200px 250px; gap: 20px; align-items: center;
   padding: 18px 0; border-top: 1px solid var(--line);
 }
 .movie__date { font-weight: 600; font-size: 15px; line-height: 1.2; }
@@ -92,11 +92,17 @@ button, input, select { font: inherit; color: inherit; }
 
 .mine { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 .mine__label { font-size: 13px; color: var(--muted); }
-.rater { position: relative; display: inline-block; cursor: pointer; font-size: 28px; }
+/* big, tight stars like Letterboxd: ~44px per star, so each half is a 22px target */
+.rater { position: relative; display: inline-block; cursor: pointer; font-size: 44px; touch-action: none; user-select: none; -webkit-user-select: none; }
+.rater .stars { font-size: inherit; letter-spacing: 0; }
+.rater[data-preview]::after {
+  content: attr(data-preview); position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%);
+  font: 600 13px/1 var(--body); background: var(--ink); color: var(--bg); padding: 4px 8px; border-radius: 6px; white-space: nowrap;
+}
 .rater__hit { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(10, 1fr); }
 .rater__hit button { border: 0; background: transparent; padding: 0; cursor: pointer; }
 .rater__hit button:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
-.mine__row { display: flex; gap: 8px; align-items: center; }
+.mine__row { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
 .pill { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 2px 10px; font-size: 13px; cursor: pointer; }
 .pill[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 .pill--poop { font-size: 18px; padding: 0 8px; filter: grayscale(1); opacity: .6; }
@@ -164,3 +170,7 @@ a.chip:hover { text-decoration: underline; }
 .countbar .count { margin: 0; }
 .export { margin: 0; font-size: 15px; color: var(--muted); }
 .export a { color: var(--red); }
+
+.hint { color: var(--muted); font-size: 15px; margin: 6px 0 0; }
+dialog #member-name { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg); }
+dialog label[for="member-name"] { display: block; font-size: 15px; font-weight: 600; margin-bottom: 4px; }

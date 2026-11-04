@@ -18,7 +18,6 @@
       <span class="logo" role="img" aria-label="Christmas tree">🎄</span>
       <div class="masthead__text">
         <h1>Christmas Mulder</h1>
-        <p>Chris's list of every new Christmas movie... rated by the family.</p>
       </div>
       <div class="me" id="me"></div>
     </div>
@@ -55,6 +54,20 @@
   </main>
 
   <footer class="wrap footer" id="footer"></footer>
+
+  <dialog id="add-member">
+    <form method="dialog" id="add-member-form">
+      <h2>Add a family member</h2>
+      <label for="member-name">Name</label>
+      <input id="member-name" name="name" maxlength="24" autocomplete="off" required>
+      <p class="hint">They sign in with the same family code.</p>
+      <p class="error" id="add-member-error"></p>
+      <div class="dialog__actions">
+        <button type="button" class="btn btn--ghost" id="add-member-cancel">Cancel</button>
+        <button type="submit" class="btn">Add</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="login">
     <form method="dialog" id="login-form">

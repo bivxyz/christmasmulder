@@ -1,5 +1,5 @@
 import { readXlsx } from './xlsx.js';
-import { parseWorkbook } from './sheet.js';
+import { parseWorkbook, MEMBER_ALIASES } from './sheet.js';
 import { currentMember, sessionCookie, clearCookie, safeEqual } from './auth.js';
 import { backfillPosters } from './posters.js';
 
@@ -25,7 +25,10 @@ async function batched(db, statements, size = 80) {
 }
 
 export async function syncFromXlsx(env, buf, via) {
-  const { movies, seasons, warnings } = parseWorkbook(await readXlsx(buf));
+  const known = (await env.DB.prepare('SELECT id, name FROM members').all()).results;
+  const aliases = { ...MEMBER_ALIASES };
+  for (const m of known) aliases[m.name.trim().toLowerCase()] ??= m.id;
+  const { movies, seasons, warnings } = parseWorkbook(await readXlsx(buf), aliases);
   if (movies.length < 20) throw new Error(`only found ${movies.length} movies in the sheet... refusing to sync`);
   const db = env.DB;
   const now = new Date().toISOString();
@@ -227,6 +230,20 @@ async function exportCsv(url, env) {
   });
 }
 
+async function addMember(request, env) {
+  const { name } = await request.json().catch(() => ({}));
+  const clean = String(name || '').replace(/\s+/g, ' ').trim();
+  if (!/^[\p{L}][\p{L} .'-]{0,23}$/u.test(clean)) return fail(400, 'use a name with letters, up to 24 characters');
+  const id = clean.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  if (!id) return fail(400, 'use a name with letters');
+  const clash = await env.DB.prepare('SELECT name FROM members WHERE id = ? OR lower(name) = lower(?)').bind(id, clean).first();
+  if (clash) return fail(409, `${clash.name} is already in the family`);
+  await env.DB.prepare(`INSERT INTO members (id, name, sort, active)
+    VALUES (?, ?, (SELECT COALESCE(MAX(sort), 0) + 1 FROM members), 1)`).bind(id, clean).run();
+  const members = await env.DB.prepare('SELECT id, name, active FROM members ORDER BY sort').all();
+  return json({ ok: true, id, members: members.results });
+}
+
 async function login(request, env, secure) {
   const { member, code } = await request.json().catch(() => ({}));
   const row = await env.DB.prepare('SELECT id FROM members WHERE id = ? AND active = 1').bind(String(member || '')).first();
@@ -302,6 +319,7 @@ export default {
       const me = await currentMember(request, env);
       if (route === 'POST /api/rate') return me ? rate(request, env, me) : fail(401, 'sign in to rate');
       if (route === 'POST /api/favorite') return me ? favorite(request, env, me) : fail(401, 'sign in first');
+      if (route === 'POST /api/members') return me ? addMember(request, env) : fail(401, 'sign in first');
       if (route === 'POST /api/sync') return me ? syncNow(env) : fail(401, 'sign in first');
       return fail(404, 'not found');
     } catch (err) {

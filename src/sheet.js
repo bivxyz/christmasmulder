@@ -3,7 +3,8 @@
 
 export const MEMBER_ALIASES = {
   dad: 'dad', dada: 'dad',
-  dana: 'dana', kitty: 'kitty', sniff: 'sniff', robin: 'robin', lola: 'lola', jen: 'jen',
+  dana: 'dana', kitty: 'kitty', sniff: 'sniff', robin: 'robin', lola: 'lola',
+  jen: 'sniff', // Sniff went by Jen in the 2021 tab
 };
 
 export const NETWORK_NAMES = {
@@ -67,7 +68,7 @@ function parseCell(v) {
   return null;
 }
 
-function mapColumns(header, above) {
+function mapColumns(header, above, aliases) {
   const cols = { members: {} };
   const hasImdb = header.some((h) => norm(h) === 'imdb');
   header.forEach((h, j) => {
@@ -81,7 +82,7 @@ function mapColumns(header, above) {
     else if (label === 'view') cols.view ??= j;
     else if (label === 'comment') cols.comment ??= j;
     else {
-      const member = MEMBER_ALIASES[label] || (label === 'rate' ? MEMBER_ALIASES[ab] : null);
+      const member = aliases[label] || (label === 'rate' ? aliases[ab] : null);
       if (member && !(member in cols.members)) cols.members[member] = j;
     }
   });
@@ -89,7 +90,8 @@ function mapColumns(header, above) {
 }
 
 // sheets: output of readXlsx(). Returns { movies, seasons, warnings }.
-export function parseWorkbook(sheets) {
+// aliases: header label -> member id. The worker adds every member's name from the database.
+export function parseWorkbook(sheets, aliases = MEMBER_ALIASES) {
   const movies = [];
   const seasons = [];
   const warnings = [];
@@ -106,7 +108,7 @@ export function parseWorkbook(sheets) {
     let h = rows.findIndex(isHeader('name'));
     if (h < 0) h = rows.findIndex(isHeader('description'));
     if (h < 0) { warnings.push(`no header row in "${sheet.name}"`); continue; }
-    const cols = mapColumns(rows[h], rows[h - 1] || []);
+    const cols = mapColumns(rows[h], rows[h - 1] || [], aliases);
     seasons.push(season);
 
     // Chris starts each year by duplicating last year's tab, which drags old notes onto random rows.

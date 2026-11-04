@@ -126,7 +126,7 @@ function movieHtml(m) {
 
 function renderMe() {
   $('#me').innerHTML = state.me
-    ? `Rating as <a href="/u/${state.me}" data-nav><b>${esc(memberName(state.me))}</b></a> 🌟<br><button class="link" id="logout">sign out</button>`
+    ? `Rating as <a href="/u/${state.me}" data-nav><b>${esc(memberName(state.me))}</b></a> 🌟<br><button class="link" id="add-member-open">add family</button> · <button class="link" id="logout">sign out</button>`
     : '<button id="signin">Sign in to rate</button>';
 }
 
@@ -363,10 +363,17 @@ document.addEventListener('click', async (e) => {
   if (t.closest('#signin')) return openLogin();
   if (t.closest('#logout')) { await api('/api/logout', { method: 'POST' }); location.reload(); return; }
   if (t.closest('#login-cancel')) return $('#login').close();
+  if (t.closest('#add-member-open')) {
+    $('#add-member-error').textContent = '';
+    $('#add-member-form').reset();
+    return $('#add-member').showModal();
+  }
+  if (t.closest('#add-member-cancel')) return $('#add-member').close();
   const seasonBtn = t.closest('[data-season]');
   if (seasonBtn) return loadSeason(seasonBtn.dataset.season);
   const hit = t.closest('.rater__hit button');
-  if (hit) {
+  // mouse and touch go through the pointer handlers below; this path is keyboard only
+  if (hit && e.detail === 0) {
     const movieId = +hit.closest('.rater').dataset.movie;
     const score = +hit.dataset.score;
     const current = state.movies.find((m) => m.id === movieId)?.ratings[state.me];
@@ -398,6 +405,45 @@ document.addEventListener('click', async (e) => {
   }
 });
 
+// Rating by pointer: press anywhere on the stars and slide, release to save.
+// The score comes from the finger position, so half stars don't need a precise tap.
+let drag = null;
+function scoreAt(rater, x) {
+  const box = rater.querySelector('.stars').getBoundingClientRect();
+  return Math.min(10, Math.max(1, Math.ceil(((x - box.left) / box.width) * 10)));
+}
+function previewScore(rater, score) {
+  rater.querySelector('.stars').style.setProperty('--pct', `${score * 10}%`);
+  rater.dataset.preview = `${score / 2}★`;
+}
+function commitScore(rater, score) {
+  const movieId = +rater.dataset.movie;
+  const current = state.movies.find((m) => m.id === movieId)?.ratings[state.me];
+  // landing on your current score again clears it
+  saveRating(movieId, current?.source === 'site' && current.score === score ? { score: null } : { score });
+}
+document.addEventListener('pointerdown', (e) => {
+  const rater = e.target.closest('.rater');
+  if (!rater || e.button !== 0) return;
+  e.preventDefault();
+  drag = { rater, score: scoreAt(rater, e.clientX) };
+  rater.setPointerCapture(e.pointerId);
+  previewScore(rater, drag.score);
+});
+document.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  drag.score = scoreAt(drag.rater, e.clientX);
+  previewScore(drag.rater, drag.score);
+});
+document.addEventListener('pointerup', () => {
+  if (!drag) return;
+  const { rater, score } = drag;
+  drag = null;
+  delete rater.dataset.preview;
+  commitScore(rater, score);
+});
+document.addEventListener('pointercancel', () => { if (drag) { delete drag.rater.dataset.preview; drag = null; } });
+
 // hover preview on the star rater
 document.addEventListener('mouseover', (e) => {
   const hit = e.target.closest('.rater__hit button');
@@ -410,6 +456,19 @@ document.addEventListener('mouseout', (e) => {
   const m = state.movies.find((x) => x.id === +rater.dataset.movie);
   const s = m?.ratings[state.me]?.score;
   rater.querySelector('.stars').style.setProperty('--pct', `${s == null ? 0 : Math.min(s, 10) * 10}%`);
+});
+
+$('#add-member-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    const { members } = await api('/api/members', { method: 'POST', body: { name: $('#member-name').value } });
+    state.members = members;
+    renderBy();
+    $('#add-member').close();
+    if (state.view === 'profile') route(); else renderMovies();
+  } catch (err) {
+    $('#add-member-error').textContent = err.message;
+  }
 });
 
 $('#login-form').addEventListener('submit', async (e) => {

@@ -36,6 +36,7 @@ check('no IMDB outside 0-10', movies.every((m) => m.imdb === null || (m.imdb > 0
 
 const dupes = movies.filter((m) => /5\.4 rating dog/.test(m.comment || '')).map((m) => `${m.season} ${m.title}`);
 check('"5.4 rating dog" note only on 2024 Merry Gentlemen', dupes.length === 1 && dupes[0] === '2024 The Merry Gentlemen', dupes);
+check('Jen maps to Sniff, no jen ratings', (await import('../src/sheet.js')).MEMBER_ALIASES.jen === 'sniff' && !movies.some((m) => m.ratings.jen), null);
 check('2022 has its 7 movies', counts['2022'] === 7, counts['2022']);
 check('classics has 11 movies', counts.classics === 11, counts.classics);
 const kitty = find('classics', 'The Nine Lives of Christmas');
