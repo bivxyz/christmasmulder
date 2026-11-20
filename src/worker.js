@@ -37,12 +37,17 @@ export async function syncFromXlsx(env, buf, via) {
     `INSERT INTO movies (season, title_key, title, row_order, release_date, release_year, network, network_code, imdb, rec, view, comment, missing_since, synced_at)
      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, NULL, ?13)
      ON CONFLICT (season, title_key) DO UPDATE SET
-       title = excluded.title, row_order = excluded.row_order, release_date = excluded.release_date,
+       title = excluded.title, row_order = excluded.row_order,
+       release_date = CASE WHEN ?14 THEN excluded.release_date ELSE COALESCE(movies.release_date, excluded.release_date) END,
        release_year = excluded.release_year, network = excluded.network, network_code = excluded.network_code,
-       imdb = excluded.imdb, rec = excluded.rec, view = excluded.view, comment = excluded.comment,
+       imdb = excluded.imdb,
+       rec = CASE WHEN ?15 THEN excluded.rec ELSE movies.rec END,
+       view = CASE WHEN ?16 THEN excluded.view ELSE movies.view END,
+       comment = CASE WHEN ?17 THEN excluded.comment ELSE movies.comment END,
        missing_since = NULL, synced_at = excluded.synced_at`,
   ).bind(m.season, m.title_key, m.title, m.row_order, m.release_date, m.release_year, m.network,
-    m.network_code, m.imdb, m.rec, m.view, m.comment, now)));
+    m.network_code, m.imdb, m.rec, m.view, m.comment, now,
+    m.has.release ? 1 : 0, m.has.rec ? 1 : 0, m.has.view ? 1 : 0, m.has.comment ? 1 : 0)));
 
   const inSeasons = `season IN (${seasons.map(() => '?').join(',')})`;
   const missing = await db.prepare(

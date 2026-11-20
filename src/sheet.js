@@ -34,6 +34,8 @@ export function titleKey(title) {
     .replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
+export const FIRST_SEASON = 2020; // the oldest year that had its own tab
+
 export function seasonFor(sheetName) {
   if (/^\s*\d{4}\s*$/.test(sheetName)) return sheetName.trim();
   if (/prior/i.test(sheetName)) return 'classics';
@@ -64,7 +66,7 @@ function parseCell(v) {
   const n = parseNumber(s);
   if (n !== null) return { score: Math.max(0, n), verdict: null, watched: 1 };
   if (VERDICTS[s]) return { score: null, verdict: VERDICTS[s], watched: VERDICTS[s] === 'skipped' ? 0 : 1 };
-  if (s === 'x') return { score: null, verdict: null, watched: 1 };
+  if (s === 'x' || s === 'w') return { score: null, verdict: null, watched: 1 }; // W = watched, no score
   return null;
 }
 
@@ -75,6 +77,7 @@ function mapColumns(header, above, aliases) {
     const label = norm(h);
     const ab = norm(above[j]);
     if (label === 'name' || label === 'description') cols.title ??= j;
+    else if (label === 'year') cols.year ??= j;
     else if (label === 'date' && ab !== 'show') cols.release ??= j;
     else if (label === 'imdb' || (label === 'rating' && !hasImdb)) cols.imdb ??= j;
     else if (label === 'app' || label === 'network') cols.network ??= j;
@@ -109,7 +112,13 @@ export function parseWorkbook(sheets, aliases = MEMBER_ALIASES) {
     if (h < 0) h = rows.findIndex(isHeader('description'));
     if (h < 0) { warnings.push(`no header row in "${sheet.name}"`); continue; }
     const cols = mapColumns(rows[h], rows[h - 1] || [], aliases);
-    seasons.push(season);
+    // Prior Years (Nov 2026 on) folds every past season into one tab with a Year column.
+    // A year with its own season on the site (2020+) goes back to that season; older ones are classics.
+    const byYear = season === 'classics' && cols.year != null;
+    const rowSeason = (year) => (byYear && year >= FIRST_SEASON ? String(year) : season);
+    if (!byYear) seasons.push(season);
+    else for (let y = FIRST_SEASON; y < new Date().getFullYear(); y++) seasons.push(String(y));
+    if (byYear) seasons.push('classics');
 
     // Chris starts each year by duplicating last year's tab, which drags old notes onto random rows.
     // A note whose text also exists on an older tab is a copy... keep it only where it started.
@@ -120,20 +129,27 @@ export function parseWorkbook(sheets, aliases = MEMBER_ALIASES) {
     }
     const seen = new Set();
 
+    let started = false;
     for (let r = h + 1; r < rows.length; r++) {
       const row = rows[r] || [];
+      // the movie grid ends at its first blank row; the key / network codes live below it
+      if (!row.some((c) => clean(c))) { if (started) break; continue; }
       const title = clean(row[cols.title]);
       if (!title) continue;
-      const release = cols.release != null ? parseRelease(row[cols.release]) : null;
+      const release = cols.release != null ? parseRelease(row[cols.release])
+        : cols.year != null ? parseRelease(row[cols.year]) : null;
       const imdb = cols.imdb != null ? parseNumber(row[cols.imdb]) : null;
       const code = cols.network != null ? clean(row[cols.network]) : '';
       // legend / key rows sit in the same grid... a real movie has at least one of these
       if (!release && imdb === null && !code) continue;
 
+      started = true;
+      const movieSeason = rowSeason(release?.year);
+
       let key = titleKey(title);
       if (!key) continue;
-      for (let i = 2; seen.has(key); i++) key = `${titleKey(title)} ~${i}`;
-      seen.add(key);
+      for (let i = 2; seen.has(`${movieSeason}|${key}`); i++) key = `${titleKey(title)} ~${i}`;
+      seen.add(`${movieSeason}|${key}`);
 
       const ratings = {};
       for (const [member, j] of Object.entries(cols.members)) {
@@ -144,12 +160,14 @@ export function parseWorkbook(sheets, aliases = MEMBER_ALIASES) {
         .filter(Boolean).join('\n') || null;
 
       movies.push({
-        season,
+        season: movieSeason,
+        // columns this tab doesn't have keep what an older tab already put there (dates, DVR notes, comments)
+        has: { release: cols.release != null, rec: cols.rec != null, view: cols.view != null, comment: cols.comment != null },
         title_key: key,
         title,
         row_order: r,
         release_date: release?.date ?? null,
-        release_year: release?.year ?? (/^\d{4}$/.test(season) ? +season : null),
+        release_year: release?.year ?? (/^\d{4}$/.test(movieSeason) ? +movieSeason : null),
         network: code ? (NETWORK_NAMES[norm(code)] || code) : null,
         network_code: code || null,
         imdb: imdb !== null && imdb > 0 && imdb <= 10 ? imdb : null,
