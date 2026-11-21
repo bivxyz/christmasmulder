@@ -146,8 +146,6 @@ dialog h2 { font: 800 28px/1.1 var(--display); letter-spacing: -0.02em; margin: 
 .names span { display: inline-block; border: 1px solid var(--line); border-radius: 999px; padding: 6px 16px; }
 .names input:checked + span { background: var(--red); border-color: var(--red); color: var(--red-ink); }
 .names input:focus-visible + span { outline: 2px solid var(--red); outline-offset: 2px; }
-dialog label[for="code"] { display: block; font-size: 15px; font-weight: 600; margin-bottom: 4px; }
-dialog #code { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg); }
 .error { color: var(--red); font-size: 15px; min-height: 1.6em; margin: 6px 0; }
 .dialog__actions { display: flex; justify-content: flex-end; gap: 8px; }
 .btn { background: var(--red); color: var(--red-ink); border: 0; border-radius: 999px; padding: 10px 20px; font-weight: 600; cursor: pointer; }
@@ -196,8 +194,22 @@ a.chip:hover { text-decoration: underline; }
 .export a { color: var(--red); }
 
 .hint { color: var(--muted); font-size: 15px; margin: 6px 0 0; }
-dialog #member-name { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg); }
-dialog label[for="member-name"] { display: block; font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+/* every text field in a dialog (email, name, family code) */
+dialog label[for] { display: block; font-size: 15px; font-weight: 600; margin: 12px 0 4px; }
+dialog input:not([type="radio"]) { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg); color: var(--ink); font-size: 16px; }
+dialog [hidden] { display: none !important; }
+dialog p { margin: 0 0 10px; }
+.link { background: none; border: 0; padding: 0; color: var(--red); text-decoration: underline; cursor: pointer; font: inherit; }
+.link--danger { color: var(--muted); }
+
+/* invite link: field + copy button on one line */
+.invite__link { display: flex; gap: 8px; margin: 8px 0; }
+.invite__link input { flex: 1; min-width: 0; font-size: 15px; }
+
+/* friends show after family, quieter */
+.chip--friend { background: transparent; border: 1px solid var(--line); }
+.family__everyone { color: var(--muted); font-size: 14px; margin-top: 2px; }
+.profile__actions { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: -4px 0 18px; font-size: 15px; }
 .pill--clear { color: var(--muted); }
 .pill--clear:hover { color: var(--ink); border-color: var(--ink); }
 .filters-toggle__n[hidden] { display: none; }

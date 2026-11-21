@@ -5,7 +5,7 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode */ } },
 };
 
-const state = { me: null, members: [], seasons: [], season: null, view: 'season', movies: [], lastSync: null };
+const state = { me: null, account: null, members: [], seasons: [], season: null, view: 'season', movies: [], lastSync: null };
 const today = new Date().toISOString().slice(0, 10);
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -24,6 +24,8 @@ async function api(path, opts = {}) {
 
 const seasonLabel = (s) => (s === 'classics' ? 'Classics' : s);
 const memberName = (id) => state.members.find((m) => m.id === id)?.name || id;
+const isFamily = (id) => !!state.members.find((m) => m.id === id)?.is_family;
+const amFamily = () => !!state.account?.is_family;
 const stars = (score10) => Math.min(score10, 10) / 2;
 const fmtStars = (n) => (Number.isInteger(n) ? `${n}` : n.toFixed(1));
 
@@ -64,21 +66,33 @@ function chipBody(memberId, r, fav) {
   return '';
 }
 
-function familyAvg(m) {
-  const scores = Object.values(m.ratings).filter((r) => r.score != null).map((r) => Math.min(r.score, 10));
+function avgOf(ratings) {
+  const scores = ratings.filter((r) => r.score != null).map((r) => Math.min(r.score, 10));
   return scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
 }
+const familyAvg = (m) => avgOf(Object.entries(m.ratings).filter(([id]) => isFamily(id)).map(([, r]) => r));
+const everyoneAvg = (m) => avgOf(Object.values(m.ratings));
+const scoredBy = (m, family) => Object.entries(m.ratings).filter(([id, r]) => r.score != null && (!family || isFamily(id))).length;
+const FRIEND_CHIPS = 6;
 
 function familyHtml(m) {
   const avg = familyAvg(m);
-  const n = Object.values(m.ratings).filter((r) => r.score != null).length;
   const head = avg == null
     ? '<span class="family__none">No family ratings yet 🍿</span>'
     : `<div class="family__avg">${starsHtml(avg)} <b title="${avg.toFixed(1)}/10">${fmtStars(Math.round(stars(avg) * 10) / 10)}</b></div>`;
+  // Everyone only says something once a friend has rated
+  const everyone = everyoneAvg(m);
+  const all = scoredBy(m, false);
+  const foot = all > scoredBy(m, true) && everyone != null
+    ? `<div class="family__everyone" title="${everyone.toFixed(1)}/10">Everyone ${fmtStars(Math.round(stars(everyone) * 10) / 10)}★ · ${all} ${all === 1 ? 'rating' : 'ratings'}</div>` : '';
   const favs = m.favorites || [];
-  const others = state.members.map((mem) => ((m.ratings[mem.id] || favs.includes(mem.id)) && mem.id !== state.me
-    ? chip(mem.id, m.ratings[mem.id], favs.includes(mem.id)) : '')).join('');
-  return `${head}${others ? `<div class="chips">${others}</div>` : ''}${n ? '' : ''}`;
+  const shows = (mem) => (m.ratings[mem.id] || favs.includes(mem.id)) && mem.id !== state.me;
+  const fam = state.members.filter((mem) => mem.is_family && shows(mem));
+  const friends = state.members.filter((mem) => !mem.is_family && shows(mem));
+  const chips = fam.map((mem) => chip(mem.id, m.ratings[mem.id], favs.includes(mem.id))).join('')
+    + friends.slice(0, FRIEND_CHIPS).map((mem) => chip(mem.id, m.ratings[mem.id], favs.includes(mem.id)).replace('class="chip', 'class="chip chip--friend')).join('')
+    + (friends.length > FRIEND_CHIPS ? `<span class="chip chip--plain">+${friends.length - FRIEND_CHIPS} more</span>` : '');
+  return `${head}${foot}${chips ? `<div class="chips">${chips}</div>` : ''}`;
 }
 
 function mineHtml(m) {
@@ -126,9 +140,12 @@ function movieHtml(m) {
 // ---------- views ----------
 
 function renderMe() {
-  $('#me').innerHTML = state.me
-    ? `Rating as <a href="/u/${state.me}" data-nav><b>${esc(memberName(state.me))}</b></a> 🌟<br><button class="link" id="add-member-open">add family</button> · <button class="link" id="logout">sign out</button>`
-    : '<button id="signin">Sign in to rate</button>';
+  if (!state.me) { $('#me').innerHTML = '<button id="signin">Sign in to rate</button>'; return; }
+  const links = [
+    amFamily() ? '<button class="link" id="invite-open">invite friends</button>' : '',
+    '<button class="link" id="logout">sign out</button>',
+  ].filter(Boolean).join(' · ');
+  $('#me').innerHTML = `Rating as <a href="/u/${state.me}" data-nav><b>${esc(memberName(state.me))}</b></a> 🌟<br>${links}`;
 }
 
 // Two tabs: Movies and Family.
@@ -167,8 +184,11 @@ const latestRating = (m, who) => (who ? [m.ratings[who]] : Object.values(m.ratin
 
 function renderBy() {
   const current = $('#by').value;
+  const opts = (list) => list.map((m) => `<option value="${m.id}">Rated by ${esc(m.name)}</option>`).join('');
+  const fam = state.members.filter((m) => m.is_family);
+  const friends = state.members.filter((m) => !m.is_family);
   $('#by').innerHTML = '<option value="">Rated by anyone</option>'
-    + state.members.map((m) => `<option value="${m.id}">Rated by ${esc(m.name)}</option>`).join('');
+    + (friends.length ? `<optgroup label="Family">${opts(fam)}</optgroup><optgroup label="Friends">${opts(friends)}</optgroup>` : opts(fam));
   $('#by').value = current;
   syncPersonSort();
 }
@@ -200,6 +220,7 @@ function renderMovies() {
   });
   const by = {
     family: (a, b) => (familyAvg(b) ?? -1) - (familyAvg(a) ?? -1),
+    everyone: (a, b) => (everyoneAvg(b) ?? -1) - (everyoneAvg(a) ?? -1),
     imdb: (a, b) => (b.imdb ?? -1) - (a.imdb ?? -1),
     title: (a, b) => a.title.localeCompare(b.title),
     // newest first; old sheet ratings (no timestamp) fall to the bottom in air-date order
@@ -235,7 +256,7 @@ function renderFooter() {
   const s = state.lastSync;
   const ago = s ? timeAgo(s.at) : 'never';
   $('#footer').innerHTML = `Movies come straight from Chris's Google Sheet. Last synced ${ago}.`
-    + (state.me ? ' <button type="button" id="sync">🔄 Sync now</button>' : '');
+    + (amFamily() ? ' <button type="button" id="sync">🔄 Sync now</button>' : '');
 }
 
 function timeAgo(iso) {
@@ -324,9 +345,18 @@ async function showProfile(id) {
     `${stats.rated || 0} rated`, avg, stats.fives ? `${stats.fives} rated 4.5★ or better` : null, stats.sucks ? `${stats.sucks} 💩` : null,
   ].filter(Boolean).join(' · ');
   document.title = `${member.name} · CHRIStmas Mulder`;
+  const who = member.is_family ? '🧦 Family' : `Friend${member.invited_by ? `, invited by ${esc(member.invited_by)}` : ''}`;
+  const famToggle = amFamily() && !mine
+    ? `<button type="button" class="link" data-family="${esc(member.id)}" data-on="${member.is_family ? 0 : 1}">${member.is_family ? 'take down their stocking' : '🧦 hang a stocking (add to the family)'}</button>` : '';
+  const keyBtn = mine
+    ? `<button type="button" class="link" data-key="${esc(member.id)}">🔗 my sign-in link</button>`
+    : amFamily() ? `<button type="button" class="link" data-key="${esc(member.id)}">🔗 make a sign-in link for ${esc(member.name)}</button>` : '';
+  const leave = mine && !member.is_family
+    ? '<button type="button" class="link link--danger" id="delete-account">delete my account</button>' : '';
   view.innerHTML = `<a href="/" data-nav class="back">← All movies</a>
     <h2 class="profile__name">${esc(member.name)}${mine ? ' <small>(you)</small>' : ''}</h2>
-    <p class="profile__stats">${statLine}</p>
+    <p class="profile__stats">${who} · ${statLine}</p>
+    ${keyBtn || famToggle || leave ? `<p class="profile__actions">${keyBtn}${famToggle}${leave}</p>` : ''}
     <h3 class="profile__h">🌟 Favorites</h3>
     <div class="favs">${slots.join('')}</div>
     <h3 class="profile__h">Recent ratings</h3>
@@ -412,6 +442,10 @@ window.addEventListener('resize', () => {
 
 async function route() {
   if (location.pathname === '/family') return showFamily();
+  const inv = location.pathname.match(/^\/i\/([A-Za-z0-9_-]+)$/);
+  if (inv) { history.replaceState(null, '', '/'); openInvite(inv[1]); return route(); }
+  const key = location.pathname.match(/^\/k\/([A-Za-z0-9_-]+)$/);
+  if (key) { history.replaceState(null, '', '/'); signInWithKey(key[1]); return route(); }
   const m = location.pathname.match(/^\/u\/([a-z0-9-]+)/);
   if (m?.[1] === 'sniff') { history.replaceState(null, '', '/u/jen'); return showProfile('jen'); } // old link
   if (m) return showProfile(m[1]);
@@ -426,11 +460,13 @@ async function route() {
 
 async function boot() {
   const data = await api('/api/bootstrap');
-  Object.assign(state, { me: data.me, members: data.members, seasons: data.seasons, lastSync: data.lastSync });
+  Object.assign(state, { me: data.me, account: data.account, members: data.members, seasons: data.seasons, lastSync: data.lastSync });
   renderMe();
   renderBy();
   renderFooter();
+  const listShowing = state.movies.length && (state.view === 'season' || state.view === 'rated' || state.view === 'search');
   await route();
+  if (listShowing && location.pathname === '/') renderMovies(); // signing in adds your rating controls
 }
 
 // ---------- the sleigh ----------
@@ -505,24 +541,134 @@ async function saveRating(movieId, body) {
   }
 }
 
+// ---------- sign in ----------
+let pendingInvite = null;
+
 function openLogin() {
-  $('#names').innerHTML = state.members.filter((m) => m.active).map((m) =>
-    `<label><input type="radio" name="member" value="${m.id}" required><span>${esc(m.name)}</span></label>`).join('');
   $('#login-error').textContent = '';
+  $('#names').innerHTML = state.members.filter((m) => m.active && m.is_family).map((m) =>
+    `<label><input type="radio" name="member" value="${m.id}" required><span>${esc(m.name)}</span></label>`).join('');
   $('#login').showModal();
+}
+
+function showStatus(text) {
+  $('#status-text').textContent = text;
+  if (!$('#status').open) $('#status').showModal();
+}
+
+async function openInvite(code) {
+  try {
+    const { from } = await api(`/api/invite?code=${encodeURIComponent(code)}`);
+    if (state.me) return showStatus(`You're already signed in as ${memberName(state.me)}... no need for ${from}'s invite.`);
+    pendingInvite = code;
+    $('#join-intro').textContent = `${from} invited you to rate Christmas movies with the Mulders. Pick a name and you're in... no email, no password.`;
+    $('#join-error').textContent = '';
+    $('#join').showModal();
+  } catch (err) {
+    showStatus(err.message);
+  }
+}
+
+// a personal link: open it on any phone to be signed in as that person
+function showKey(url, name, yours, fresh) {
+  $('#key-title').textContent = yours ? 'Your sign-in link' : `Sign-in link for ${name}`;
+  $('#key-intro').textContent = yours
+    ? `${fresh ? 'You\'re in! ' : ''}Save this somewhere (notes, a text to yourself). Opening it signs you in as ${name} on any phone or computer.`
+    : `Send this to ${name}. Opening it signs them in as ${name} on any phone.`;
+  $('#key-hint').textContent = 'Treat it like a key... anyone with it can rate as that person. Making a new one turns this one off.';
+  $('#key-url').value = url;
+  $('#key-copy').textContent = 'Copy';
+  if (!$('#key').open) $('#key').showModal();
+}
+
+async function signInWithKey(key) {
+  try {
+    const { name } = await api('/api/auth/key', { method: 'POST', body: { key } });
+    await boot();
+    showStatus(`Signed in as ${name} 🎄`);
+  } catch (err) {
+    showStatus(err.message);
+  }
+}
+
+// ---------- invites ----------
+function inviteBody(invite) {
+  if (!invite) {
+    return '<p><button type="button" class="btn" id="invite-make">Make my invite link</button></p>'
+      + '<p class="hint">Works for 25 people and stops Jan 15. You can turn it off any time.</p>';
+  }
+  const ends = new Date(invite.expires_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return `<div class="invite__link"><input readonly value="${esc(invite.url)}" aria-label="Invite link" id="invite-url">
+      <button type="button" class="btn" id="invite-copy">Copy</button></div>
+    <p class="hint">${invite.uses} of ${invite.max_uses} used · works until ${ends} ·
+      <button type="button" class="link link--danger" id="invite-revoke" data-code="${esc(invite.code)}">turn it off</button></p>`;
+}
+
+async function openInviteDialog() {
+  $('#invite-error').textContent = '';
+  $('#invite-body').innerHTML = '<p class="hint">Loading...</p>';
+  $('#invite').showModal();
+  try {
+    const { invite } = await api('/api/invites');
+    $('#invite-body').innerHTML = inviteBody(invite);
+  } catch (err) { $('#invite-error').textContent = err.message; }
 }
 
 document.addEventListener('click', async (e) => {
   const t = e.target;
   if (t.closest('#signin')) return openLogin();
   if (t.closest('#logout')) { await api('/api/logout', { method: 'POST' }); location.reload(); return; }
-  if (t.closest('#login-cancel')) return $('#login').close();
-  if (t.closest('#add-member-open')) {
-    $('#add-member-error').textContent = '';
-    $('#add-member-form').reset();
-    return $('#add-member').showModal();
+  if (t.closest('[data-close]')) return t.closest('dialog').close();
+  if (t.closest('#invite-open')) return openInviteDialog();
+  if (t.closest('#invite-make')) {
+    try { $('#invite-body').innerHTML = inviteBody((await api('/api/invites', { method: 'POST' })).invite); } catch (err) { $('#invite-error').textContent = err.message; }
+    return;
   }
-  if (t.closest('#add-member-cancel')) return $('#add-member').close();
+  if (t.closest('#invite-copy')) {
+    const url = $('#invite-url').value;
+    try { await navigator.clipboard.writeText(url); t.textContent = 'Copied'; } catch { $('#invite-url').select(); }
+    return;
+  }
+  if (t.closest('#invite-revoke')) {
+    if (!confirm('Turn off this link? Anyone who already joined stays. Nobody new can use it.')) return;
+    try {
+      await api('/api/invites/revoke', { method: 'POST', body: { code: t.dataset.code } });
+      $('#invite-body').innerHTML = inviteBody(null);
+    } catch (err) { $('#invite-error').textContent = err.message; }
+    return;
+  }
+  if (t.closest('#key-copy')) {
+    try { await navigator.clipboard.writeText($('#key-url').value); t.textContent = 'Copied'; } catch { $('#key-url').select(); }
+    return;
+  }
+  const keyBtn = t.closest('[data-key]');
+  if (keyBtn) {
+    const id = keyBtn.dataset.key;
+    const yours = id === state.me;
+    if (!confirm(yours ? 'Make your sign-in link? If you made one before, the old one stops working.'
+      : `Make a sign-in link for ${memberName(id)}? Their old link (if any) stops working. They stay signed in where they already are.`)) return;
+    try {
+      const { url, name } = await api('/api/account/key', { method: 'POST', body: yours ? {} : { member: id } });
+      showKey(url, name, yours, false);
+    } catch (err) { alert(err.message); }
+    return;
+  }
+  const famBtn = t.closest('[data-family]');
+  if (famBtn) {
+    const on = famBtn.dataset.on === '1';
+    const name = memberName(famBtn.dataset.family);
+    if (!confirm(on ? `Hang a stocking for ${name}? They'll show on the family page and in Chris's export.` : `Take down ${name}'s stocking?`)) return;
+    try {
+      await api('/api/members/family', { method: 'POST', body: { member: famBtn.dataset.family, on } });
+      await boot();
+    } catch (err) { alert(err.message); }
+    return;
+  }
+  if (t.closest('#delete-account')) {
+    if (!confirm('Delete your account? Your ratings and favorites go with it. This can\'t be undone.')) return;
+    try { await api('/api/account/delete', { method: 'POST' }); location.href = '/'; } catch (err) { alert(err.message); }
+    return;
+  }
   if (t.closest('#movies-tab')) return loadSeason(state.season || state.seasons[0]?.season);
   const hit = t.closest('.rater__hit button');
   // mouse and touch go through the pointer handlers below; this path is keyboard only
@@ -636,29 +782,29 @@ document.addEventListener('mouseout', (e) => {
   rater.querySelector('.stars').style.setProperty('--pct', `${s == null ? 0 : Math.min(s, 10) * 10}%`);
 });
 
-$('#add-member-form').addEventListener('submit', async (e) => {
+$('#join-form').addEventListener('submit', async (e) => {
   e.preventDefault();
+  $('#join-error').textContent = '';
+  const btn = e.target.querySelector('[type=submit]');
+  btn.disabled = true;
   try {
-    const { members } = await api('/api/members', { method: 'POST', body: { name: $('#member-name').value } });
-    state.members = members;
-    renderBy();
-    $('#add-member').close();
-    if (state.view === 'profile') route(); else renderMovies();
+    const res = await api('/api/join', { method: 'POST', body: { invite: pendingInvite, name: $('#display-name').value } });
+    $('#join').close();
+    await boot();
+    flySleigh();
+    showKey(res.key_url, memberName(res.me), true, true);
   } catch (err) {
-    $('#add-member-error').textContent = err.message;
-  }
+    $('#join-error').textContent = err.message;
+  } finally { btn.disabled = false; }
 });
 
 $('#login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const form = new FormData(e.target);
   try {
-    const { me } = await api('/api/login', { method: 'POST', body: { member: form.get('member'), code: form.get('code') } });
-    state.me = me;
+    await api('/api/login', { method: 'POST', body: { member: form.get('member'), code: form.get('code') } });
     $('#login').close();
-    renderMe();
-    renderFooter();
-    renderMovies();
+    await boot();
   } catch (err) {
     $('#login-error').textContent = err.message;
   }

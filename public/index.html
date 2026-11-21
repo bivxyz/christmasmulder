@@ -48,6 +48,7 @@
         <option value="recent">Recently rated</option>
         <option value="person" hidden disabled>Their score</option>
         <option value="family">Family score</option>
+        <option value="everyone">Everyone score</option>
         <option value="imdb">IMDB</option>
         <option value="title">Title</option>
       </select>
@@ -61,20 +62,7 @@
 
   <footer class="wrap footer" id="footer"></footer>
 
-  <dialog id="add-member">
-    <form method="dialog" id="add-member-form">
-      <h2>Add a family member</h2>
-      <label for="member-name">Name</label>
-      <input id="member-name" name="name" maxlength="24" autocomplete="off" required>
-      <p class="hint">They sign in with the same family code.</p>
-      <p class="error" id="add-member-error"></p>
-      <div class="dialog__actions">
-        <button type="button" class="btn btn--ghost" id="add-member-cancel">Cancel</button>
-        <button type="submit" class="btn">Add</button>
-      </div>
-    </form>
-  </dialog>
-
+  <!-- family sign in: pick your name + the family code. Friends use their personal link instead. -->
   <dialog id="login">
     <form method="dialog" id="login-form">
       <h2>Who's rating?</h2>
@@ -83,11 +71,53 @@
       <input id="code" name="code" autocomplete="current-password" required>
       <p class="error" id="login-error"></p>
       <div class="dialog__actions">
-        <button type="button" class="btn btn--ghost" id="login-cancel">Cancel</button>
+        <button type="button" class="btn btn--ghost" data-close>Cancel</button>
         <button type="submit" class="btn">Sign in</button>
+      </div>
+      <p class="hint">Friend of the family? Open your personal sign-in link. Lost it? Ask whoever invited you to make a new one.</p>
+    </form>
+  </dialog>
+
+  <!-- where an invite link lands: pick a name and you're in -->
+  <dialog id="join">
+    <form method="dialog" id="join-form">
+      <h2>You're invited 🎄</h2>
+      <p id="join-intro"></p>
+      <label for="display-name">What should we call you?</label>
+      <input id="display-name" name="name" maxlength="24" autocomplete="nickname" required>
+      <p class="hint">Shows next to your ratings.</p>
+      <p class="error" id="join-error"></p>
+      <div class="dialog__actions">
+        <button type="button" class="btn btn--ghost" data-close>Not now</button>
+        <button type="submit" class="btn">Start rating</button>
       </div>
     </form>
   </dialog>
+
+  <!-- a personal sign-in link: shown right after joining, and from a profile -->
+  <dialog id="key">
+    <h2 id="key-title">Your sign-in link</h2>
+    <p id="key-intro"></p>
+    <div class="invite__link"><input readonly id="key-url" aria-label="Sign-in link">
+      <button type="button" class="btn" id="key-copy">Copy</button></div>
+    <p class="hint" id="key-hint"></p>
+    <div class="dialog__actions"><button type="button" class="btn btn--ghost" data-close>Done</button></div>
+  </dialog>
+
+  <dialog id="status">
+    <p id="status-text"></p>
+    <div class="dialog__actions"><button type="button" class="btn" data-close>OK</button></div>
+  </dialog>
+
+  <!-- family only: your shareable invite link -->
+  <dialog id="invite">
+    <h2>Invite friends</h2>
+    <p>Text this link to anyone you want rating with us. They open it, pick a name, and they're in.</p>
+    <div id="invite-body"><p class="hint">Loading...</p></div>
+    <p class="error" id="invite-error"></p>
+    <div class="dialog__actions"><button type="button" class="btn btn--ghost" data-close>Done</button></div>
+  </dialog>
+
 
   <script src="/app.js" type="module"></script>
 </body>

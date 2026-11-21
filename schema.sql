@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS members (
   sort   INTEGER NOT NULL DEFAULT 0,
   active INTEGER NOT NULL DEFAULT 1  -- inactive members keep old ratings but can't sign in
 );
+-- is_family, invited_by, created_at, key_hash and the invite tables come from migrations/ (run in order)
 
 INSERT OR IGNORE INTO members (id, name, sort, active) VALUES
   ('dad',   'Dad',   1, 1),

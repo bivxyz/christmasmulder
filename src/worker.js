@@ -1,6 +1,7 @@
 import { readXlsx } from './xlsx.js';
 import { parseWorkbook, MEMBER_ALIASES } from './sheet.js';
-import { currentMember, sessionCookie, clearCookie, safeEqual } from './auth.js';
+import { sessionCookie, clearCookie, safeEqual } from './auth.js';
+import { loadMe, myInvite, revokeInvite, inviteInfo, join, keySignIn, newKey, deleteAccount, setFamily } from './accounts.js';
 import { backfillPosters } from './posters.js';
 
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
@@ -90,13 +91,16 @@ export async function syncFromXlsx(env, buf, via) {
 
 async function bootstrap(request, env) {
   const [members, seasons, meta] = await env.DB.batch([
-    env.DB.prepare('SELECT id, name, active FROM members ORDER BY sort'),
+    // this list goes to every visitor: names only, never key_hash
+    env.DB.prepare('SELECT id, name, active, is_family FROM members ORDER BY is_family DESC, sort'),
     env.DB.prepare('SELECT season, COUNT(*) AS movies FROM movies WHERE missing_since IS NULL GROUP BY season'),
     env.DB.prepare(`SELECT value FROM meta WHERE key = 'last_sync'`),
   ]);
   const order = (s) => (s === 'classics' ? -1 : +s);
+  const me = await loadMe(request, env);
   return json({
-    me: await currentMember(request, env),
+    me: me?.id ?? null,
+    account: me && { is_family: !!me.is_family },
     members: members.results,
     seasons: seasons.results.sort((a, b) => order(b.season) - order(a.season)),
     lastSync: meta.results[0] ? JSON.parse(meta.results[0].value) : null,
@@ -152,14 +156,15 @@ async function family(env) {
         WHERE f.member_id = p.id ORDER BY f.created_at LIMIT 1) AS poster_url,
       (SELECT m.title FROM favorites f JOIN movies m ON m.id = f.movie_id
         WHERE f.member_id = p.id ORDER BY f.created_at LIMIT 1) AS favorite
-    FROM members p WHERE p.active = 1 ORDER BY p.sort`).all();
+    FROM members p WHERE p.active = 1 AND p.is_family = 1 ORDER BY p.sort`).all();
   return json(results);
 }
 
 async function profile(url, env) {
   const id = url.searchParams.get('member');
-  const member = await env.DB.prepare('SELECT id, name, active FROM members WHERE id = ?').bind(String(id || '')).first();
-  if (!member) return fail(404, 'no such family member');
+  const member = await env.DB.prepare(`SELECT p.id, p.name, p.active, p.is_family, i.name AS invited_by
+    FROM members p LEFT JOIN members i ON i.id = p.invited_by WHERE p.id = ?`).bind(String(id || '')).first();
+  if (!member) return fail(404, 'nobody by that name here');
   const [favs, recent, stats] = await env.DB.batch([
     env.DB.prepare(`SELECT ${MOVIE_COLS} FROM favorites f JOIN movies m ON m.id = f.movie_id
       WHERE f.member_id = ? ORDER BY f.created_at`).bind(member.id),
@@ -209,16 +214,21 @@ async function exportCsv(url, env) {
   const moviesStmt = env.DB.prepare(`SELECT ${MOVIE_COLS} FROM movies m WHERE m.missing_since IS NULL ${where}
     ORDER BY m.season = 'classics', m.season DESC, m.release_date IS NULL, m.release_date, m.row_order`);
   const [members, movies] = await env.DB.batch([
-    env.DB.prepare('SELECT id, name FROM members ORDER BY sort'),
+    env.DB.prepare('SELECT id, name, is_family FROM members ORDER BY sort'),
     season === 'all' ? moviesStmt : moviesStmt.bind(season),
   ]);
   const rows = await withRatings(env, movies.results);
   const names = Object.fromEntries(members.results.map((m) => [m.id, m.name]));
-  // only include people who have rated something in this export
-  const people = members.results.filter((p) => rows.some((m) => m.ratings[p.id]));
+  // Chris's sheet has a column per family member; friends only show up in Everyone Avg
+  const family = new Set(members.results.filter((p) => p.is_family).map((p) => p.id));
+  const people = members.results.filter((p) => family.has(p.id) && rows.some((m) => m.ratings[p.id]));
+  const avgOf = (rs) => {
+    const s = rs.filter((r) => r.score != null).map((r) => Math.min(r.score, 10));
+    return s.length ? Math.round((s.reduce((a, b) => a + b, 0) / s.length) * 10) / 10 : '';
+  };
 
   const header = ['Season', 'Release Date', 'Name', 'App', 'IMDB', 'Rec', 'View',
-    ...people.map((p) => p.name), 'Family Avg', 'Last Rated', 'Favorites', 'Comment', 'IMDb Link'];
+    ...people.map((p) => p.name), 'Family Avg', 'Everyone Avg', 'Last Rated', 'Favorites', 'Comment', 'IMDb Link'];
   const lines = [header];
   for (const m of rows) {
     const cells = people.map((p) => {
@@ -228,14 +238,14 @@ async function exportCsv(url, env) {
       if (r.verdict) return VERDICT_CODES[r.verdict] || r.verdict;
       return r.watched ? 'X' : '';
     });
-    const scores = Object.values(m.ratings).filter((r) => r.score != null).map((r) => Math.min(r.score, 10));
-    const avg = scores.length ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 : '';
+    const avg = avgOf(Object.entries(m.ratings).filter(([id]) => family.has(id)).map(([, r]) => r));
+    const everyone = avgOf(Object.values(m.ratings));
     lines.push([
       m.season === 'classics' ? 'Classics' : m.season,
       m.release_date || m.release_year || '',
       m.title, m.network_code || m.network || '', m.imdb ?? '', m.rec || '', m.view || '',
       // newest rating date on the row, so Chris can sort by it and see what changed
-      ...cells, avg, Object.values(m.ratings).map((r) => r.rated_at || '').sort().pop()?.slice(0, 10) || '',
+      ...cells, avg, everyone, Object.values(m.ratings).map((r) => r.rated_at || '').sort().pop()?.slice(0, 10) || '',
       (m.favorites || []).map((id) => names[id] || id).join(', '),
       m.comment || '', m.imdb_id ? `https://www.imdb.com/title/${m.imdb_id}/` : '',
     ]);
@@ -253,23 +263,10 @@ async function exportCsv(url, env) {
   });
 }
 
-async function addMember(request, env) {
-  const { name } = await request.json().catch(() => ({}));
-  const clean = String(name || '').replace(/\s+/g, ' ').trim();
-  if (!/^[\p{L}][\p{L} .'-]{0,23}$/u.test(clean)) return fail(400, 'use a name with letters, up to 24 characters');
-  const id = clean.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  if (!id) return fail(400, 'use a name with letters');
-  const clash = await env.DB.prepare('SELECT name FROM members WHERE id = ? OR lower(name) = lower(?)').bind(id, clean).first();
-  if (clash) return fail(409, `${clash.name} is already in the family`);
-  await env.DB.prepare(`INSERT INTO members (id, name, sort, active)
-    VALUES (?, ?, (SELECT COALESCE(MAX(sort), 0) + 1 FROM members), 1)`).bind(id, clean).run();
-  const members = await env.DB.prepare('SELECT id, name, active FROM members ORDER BY sort').all();
-  return json({ ok: true, id, members: members.results });
-}
-
 async function login(request, env, secure) {
   const { member, code } = await request.json().catch(() => ({}));
-  const row = await env.DB.prepare('SELECT id FROM members WHERE id = ? AND active = 1').bind(String(member || '')).first();
+  // the family code is family only; friends sign in by email
+  const row = await env.DB.prepare('SELECT id FROM members WHERE id = ? AND active = 1 AND is_family = 1').bind(String(member || '')).first();
   if (!row) return fail(400, 'pick your name');
   const ip = request.headers.get('cf-connecting-ip') || 'local';
   const hourAgo = new Date(Date.now() - 3600_000).toISOString();
@@ -340,11 +337,20 @@ export default {
         return json(await syncFromXlsx(env, await request.arrayBuffer(), 'import'));
       }
 
-      const me = await currentMember(request, env);
-      if (route === 'POST /api/rate') return me ? rate(request, env, me) : fail(401, 'sign in to rate');
-      if (route === 'POST /api/favorite') return me ? favorite(request, env, me) : fail(401, 'sign in first');
-      if (route === 'POST /api/members') return me ? addMember(request, env) : fail(401, 'sign in first');
-      if (route === 'POST /api/sync') return me ? syncNow(env) : fail(401, 'sign in first');
+      if (route === 'GET /api/invite') return inviteInfo(url, env);
+      if (route === 'POST /api/join') return join(request, env, secure, url.origin);
+      if (route === 'POST /api/auth/key') return keySignIn(request, env, secure);
+
+      const me = await loadMe(request, env);
+      if (!me) return fail(401, route === 'POST /api/rate' ? 'sign in to rate' : 'sign in first');
+      if (route === 'POST /api/rate') return rate(request, env, me.id);
+      if (route === 'POST /api/favorite') return favorite(request, env, me.id);
+      if (route === 'GET /api/invites' || route === 'POST /api/invites') return myInvite(request, env, me, url.origin);
+      if (route === 'POST /api/invites/revoke') return revokeInvite(request, env, me);
+      if (route === 'POST /api/account/key') return newKey(request, env, me, url.origin);
+      if (route === 'POST /api/account/delete') return deleteAccount(env, me, secure);
+      if (route === 'POST /api/members/family') return setFamily(request, env, me);
+      if (route === 'POST /api/sync') return me.is_family ? syncNow(env) : fail(403, 'only family can do that');
       return fail(404, 'not found');
     } catch (err) {
       console.error(err);
