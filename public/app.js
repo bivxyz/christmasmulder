@@ -28,6 +28,12 @@ const isFamily = (id) => !!state.members.find((m) => m.id === id)?.is_family;
 const amFamily = () => !!state.account?.is_family;
 const stars = (score10) => Math.min(score10, 10) / 2;
 const fmtStars = (n) => (Number.isInteger(n) ? `${n}` : n.toFixed(1));
+// Stars or /10 is only how ratings read. Both views use the same stored 1-10 scores.
+let scale = store.get('scale') === 'ten' ? 'ten' : 'stars';
+const ten = () => scale === 'ten';
+const fmtTen = (n) => (Number.isInteger(n) ? `${n}` : (Math.round(n * 10) / 10).toFixed(1));
+// an average, in whichever scale is showing
+const avgText = (score10) => (ten() ? fmtTen(score10) : `${fmtStars(Math.round(stars(score10) * 10) / 10)}★`);
 
 function starsHtml(score10, small) {
   const pct = score10 == null ? 0 : Math.min(score10, 10) * 10;
@@ -56,8 +62,9 @@ function chipBody(memberId, r, fav) {
   if (r.score != null) {
     const extra = r.score > 10 ? ` ... a ${r.score}/10!` : '';
     const fire = r.score > 10 ? ' 🔥' : '';
-    const half = Math.round(stars(r.score) * 2) / 2; // chips speak the half-star scale; exact score on hover
-    return `<span class="chip" title="${r.score}/10${from}${extra}">${name} <b>${fmtStars(half)}★</b>${fire}</span>`;
+    const half = Math.round(stars(r.score) * 2) / 2; // star chips speak the half-star scale; exact score on hover
+    const shown = ten() ? fmtTen(r.score) : `${fmtStars(half)}★`;
+    return `<span class="chip" title="${r.score}/10${from}${extra}">${name} <b>${shown}</b>${fire}</span>`;
   }
   if (r.verdict === 'sucks') return `<span class="chip" title="It sucked${from}">${name} 💩</span>`;
   if (r.verdict === 'turned-off') return `<span class="chip" title="Turned it off${from}">${name} 📴</span>`;
@@ -77,14 +84,18 @@ const FRIEND_CHIPS = 6;
 
 function familyHtml(m) {
   const avg = familyAvg(m);
-  const head = avg == null
-    ? '<span class="family__none">No family ratings yet 🍿</span>'
-    : `<div class="family__avg">${starsHtml(avg)} <b title="${avg.toFixed(1)}/10">${fmtStars(Math.round(stars(avg) * 10) / 10)}</b></div>`;
+  let head;
+  if (avg == null) head = '<span class="family__none">No family ratings yet 🍿</span>';
+  else if (ten()) {
+    // /10 puts the family right next to IMDb, same scale
+    head = `<div class="family__avg"><span class="ten" title="Family average">${fmtTen(avg)}<small>/10 family</small></span>`
+      + `${m.imdb != null ? `<span class="family__imdb">IMDb ${m.imdb.toFixed(1)}</span>` : ''}</div>`;
+  } else head = `<div class="family__avg">${starsHtml(avg)} <b title="${avg.toFixed(1)}/10">${fmtStars(Math.round(stars(avg) * 10) / 10)}</b></div>`;
   // Everyone only says something once a friend has rated
   const everyone = everyoneAvg(m);
   const all = scoredBy(m, false);
   const foot = all > scoredBy(m, true) && everyone != null
-    ? `<div class="family__everyone" title="${everyone.toFixed(1)}/10">Everyone ${fmtStars(Math.round(stars(everyone) * 10) / 10)}★ · ${all} ${all === 1 ? 'rating' : 'ratings'}</div>` : '';
+    ? `<div class="family__everyone" title="${everyone.toFixed(1)}/10">Everyone ${avgText(everyone)} · ${all} ${all === 1 ? 'rating' : 'ratings'}</div>` : '';
   const favs = m.favorites || [];
   const shows = (mem) => (m.ratings[mem.id] || favs.includes(mem.id)) && mem.id !== state.me;
   const fam = state.members.filter((mem) => mem.is_family && shows(mem));
@@ -101,10 +112,19 @@ function mineHtml(m) {
   const score = r?.score ?? null;
   const sucks = r?.verdict === 'sucks';
   const fromSheet = r?.source === 'sheet' ? ' <span title="Imported from Chris\'s sheet">(sheet)</span>' : '';
-  const hits = Array.from({ length: 10 }, (_, i) => `<button type="button" data-score="${i + 1}" aria-label="${(i + 1) / 2} stars"></button>`).join('');
-  return `<span class="mine__label">Your rating${fromSheet}</span>
+  let input;
+  if (ten()) {
+    // same 1-10 as two taps per star; a sheet decimal like 6.8 shows in the label, no button lights up
+    const btns = Array.from({ length: 10 }, (_, i) => `<button type="button" data-ten="${i + 1}" aria-pressed="${score === i + 1}" aria-label="${i + 1} out of 10">${i + 1}</button>`).join('');
+    input = `<div class="tens" data-movie="${m.id}">${btns}</div>`;
+  } else {
+    const hits = Array.from({ length: 10 }, (_, i) => `<button type="button" data-score="${i + 1}" aria-label="${(i + 1) / 2} stars"></button>`).join('');
+    input = `<span class="rater" data-movie="${m.id}">${starsHtml(score)}<span class="rater__hit">${hits}</span></span>`;
+  }
+  const exact = ten() && score != null && !Number.isInteger(score) ? `: ${fmtTen(score)}` : '';
+  return `<span class="mine__label">Your rating${exact}${fromSheet}</span>
     <div class="mine__row">
-      <span class="rater" data-movie="${m.id}">${starsHtml(score)}<span class="rater__hit">${hits}</span></span>
+      ${input}
       <button type="button" class="pill pill--poop" data-sucks="${m.id}" aria-pressed="${sucks}" title="It sucked" aria-label="It sucked">💩</button>
       <button type="button" class="pill pill--fav" data-fav="${m.id}" aria-pressed="${(m.favorites || []).includes(state.me)}" title="One of my favorites" aria-label="One of my favorites">🌟</button>
       ${r?.source === 'site' ? `<button type="button" class="pill pill--clear" data-clear="${m.id}" title="Remove my rating">✕ clear</button>` : ''}
@@ -115,7 +135,8 @@ function movieHtml(m) {
   const up = m.release_date && m.release_date > today;
   const meta = [
     m.network ? `<span title="${esc(m.network_code)}">${esc(m.network)}</span>` : '',
-    m.imdb != null ? `IMDB ${m.imdb.toFixed(1)}` : '',
+    // in /10 view IMDb sits beside the family score instead
+    m.imdb != null && !(ten() && familyAvg(m) != null) ? `IMDb ${m.imdb.toFixed(1)}` : '',
     state.view !== 'season' && m.season ? seasonLabel(m.season) : '',
     $('#sort').value === 'recent' ? lastRatedText(m) : '',
   ].filter(Boolean).join(' · ');
@@ -138,6 +159,18 @@ function movieHtml(m) {
 }
 
 // ---------- views ----------
+
+function renderScale() {
+  for (const b of document.querySelectorAll('[data-scale]')) b.setAttribute('aria-pressed', b.dataset.scale === scale);
+}
+
+function setScale(next) {
+  if (next === scale) return;
+  scale = next;
+  store.set('scale', scale);
+  renderScale();
+  renderMovies(); // the toggle lives on the list; profiles pick it up next time they open
+}
 
 function renderMe() {
   if (!state.me) { $('#me').innerHTML = '<button id="signin">Sign in to rate</button>'; return; }
@@ -340,9 +373,9 @@ async function showProfile(id) {
   const mine = member.id === state.me;
   const slots = [...favorites.map(posterCard)];
   while (slots.length < 4) slots.push(`<div class="fav fav--slot"><span class="fav__empty">🌟</span><span class="fav__title">${mine ? 'Star a movie to fill this' : 'Empty'}</span></div>`);
-  const avg = stats.avg != null ? `${fmtStars(Math.round(stars(stats.avg) * 10) / 10)}★ average` : null;
+  const avg = stats.avg != null ? `${avgText(stats.avg)} average` : null;
   const statLine = [
-    `${stats.rated || 0} rated`, avg, stats.fives ? `${stats.fives} rated 4.5★ or better` : null, stats.sucks ? `${stats.sucks} 💩` : null,
+    `${stats.rated || 0} rated`, avg, stats.fives ? `${stats.fives} rated ${ten() ? '9' : '4.5★'} or better` : null, stats.sucks ? `${stats.sucks} 💩` : null,
   ].filter(Boolean).join(' · ');
   document.title = `${member.name} · CHRIStmas Mulder`;
   const who = member.is_family ? '🧦 Family' : `Friend${member.invited_by ? `, invited by ${esc(member.invited_by)}` : ''}`;
@@ -462,6 +495,7 @@ async function boot() {
   const data = await api('/api/bootstrap');
   Object.assign(state, { me: data.me, account: data.account, members: data.members, seasons: data.seasons, lastSync: data.lastSync });
   renderMe();
+  renderScale();
   renderBy();
   renderFooter();
   const listShowing = state.movies.length && (state.view === 'season' || state.view === 'rated' || state.view === 'search');
@@ -670,6 +704,16 @@ document.addEventListener('click', async (e) => {
     return;
   }
   if (t.closest('#movies-tab')) return loadSeason(state.season || state.seasons[0]?.season);
+  const scaleBtn = t.closest('[data-scale]');
+  if (scaleBtn) return setScale(scaleBtn.dataset.scale);
+  const tenBtn = t.closest('.tens [data-ten]');
+  if (tenBtn) {
+    const movieId = +tenBtn.closest('.tens').dataset.movie;
+    const score = +tenBtn.dataset.ten;
+    const current = state.movies.find((m) => m.id === movieId)?.ratings[state.me];
+    // tapping your current score again clears it, same as the stars
+    return saveRating(movieId, current?.source === 'site' && current.score === score ? { score: null } : { score });
+  }
   const hit = t.closest('.rater__hit button');
   // mouse and touch go through the pointer handlers below; this path is keyboard only
   if (hit && e.detail === 0) {

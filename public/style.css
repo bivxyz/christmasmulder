@@ -280,3 +280,17 @@ dialog p { margin: 0 0 10px; }
   50%  { transform: translate(calc(50vw - 50%), 0) rotate(-6deg); }
   100% { transform: translate(100vw, -90px) rotate(-10deg); }
 }
+
+/* stars vs /10: same ratings, two ways to read them */
+.scale { display: inline-flex; flex: none; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 3px; gap: 2px; }
+.scale button { border: 0; background: transparent; border-radius: 7px; padding: 6px 10px; font-size: 15px; font-weight: 600; color: var(--muted); cursor: pointer; }
+.scale button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.ten { font-family: var(--display); font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+.ten small { font-family: var(--body); font-size: 13px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+.family__imdb { font-size: 13px; color: var(--muted); }
+.tens { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; flex: 1 1 260px; max-width: 360px; }
+.tens button { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 8px 0; font-size: 15px; font-weight: 600; cursor: pointer; }
+.tens button[aria-pressed="true"] { background: var(--red); border-color: var(--red); color: var(--red-ink); }
+.tens.saving { opacity: .5; }
+@media (hover: hover) and (pointer: fine) { .tens button:hover { border-color: var(--ink); } }
+@media (max-width: 700px) { .scale__word { display: none; } }

@@ -28,6 +28,10 @@
    <div id="list-view">
     <div class="controls">
       <input id="q" type="search" placeholder="Search every movie" aria-label="Search titles">
+      <div class="scale" role="group" aria-label="Show ratings as">
+        <button type="button" data-scale="stars" aria-pressed="true">★<span class="scale__word"> Stars</span></button>
+        <button type="button" data-scale="ten" aria-pressed="false">/10</button>
+      </div>
       <button type="button" class="filters-toggle" id="filters-toggle" aria-expanded="false" aria-controls="filters">
         <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M3 5h18M6 12h12M10 19h4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>
         Filters<span class="filters-toggle__n" id="filters-n" hidden></span>
@@ -49,7 +53,7 @@
         <option value="person" hidden disabled>Their score</option>
         <option value="family">Family score</option>
         <option value="everyone">Everyone score</option>
-        <option value="imdb">IMDB</option>
+        <option value="imdb">IMDb</option>
         <option value="title">Title</option>
       </select>
       </div>
